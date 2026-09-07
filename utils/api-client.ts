@@ -3,7 +3,7 @@
  * Provides common functionality for making API requests
  */
 
-import { APIRequestContext, request } from '@playwright/test';
+import { APIRequestContext, request, test } from '@playwright/test';
 import { ApiConfig, ApiRequestOptions, ApiResponse, RetryConfig } from '../types';
 import { logger, logApiRequest, logApiResponse, logApiError } from './logger';
 
@@ -11,6 +11,8 @@ import { logger, logApiRequest, logApiResponse, logApiError } from './logger';
 const DEFAULT_RATE_LIMIT_DELAY_MS = 15000;
 /** Never wait longer than this for a single 429 back-off. */
 const MAX_RATE_LIMIT_DELAY_MS = 65000;
+/** Cap on a single request/response body stored in the HTML report. */
+const MAX_ATTACHMENT_CHARS = 20000;
 
 export class ApiClient {
   private baseURL: string;
@@ -153,6 +155,7 @@ export class ApiClient {
         const statusCode = response.status();
 
         logApiResponse(method, fullUrl, statusCode, responseBody);
+        await this.attachToReport(method, fullUrl, requestHeaders, body, statusCode, responseBody);
 
         // Rate limited: back off (Retry-After aware) and try again
         if (statusCode === 429 && attempt < retries) {
@@ -188,6 +191,60 @@ export class ApiClient {
       error: lastError?.message || 'Request failed after retries',
       statusCode: lastError?.statusCode || 500,
     };
+  }
+
+  /**
+   * Record the call in the Playwright HTML report so the actual request and
+   * response are visible on passing tests too, not only on failures.
+   * Silently does nothing outside a running test (e.g. during global setup).
+   */
+  private async attachToReport(
+    method: string,
+    url: string,
+    requestHeaders: Record<string, string>,
+    requestBody: any,
+    statusCode: number,
+    responseBody: any
+  ): Promise<void> {
+    let info: ReturnType<typeof test.info>;
+    try {
+      info = test.info();
+    } catch {
+      return; // not inside a test
+    }
+    if (!info || typeof info.attach !== 'function') return;
+
+    const clip = (value: string) =>
+      value.length > MAX_ATTACHMENT_CHARS
+        ? `${value.slice(0, MAX_ATTACHMENT_CHARS)}\n… truncated, ${value.length} chars total`
+        : value;
+
+    const render = (value: any) => {
+      if (value === undefined) return undefined;
+      try {
+        return clip(typeof value === 'string' ? value : JSON.stringify(value, null, 2));
+      } catch {
+        return String(value);
+      }
+    };
+
+    // The bearer token is redacted: the report is shared and archived.
+    const headers = { ...requestHeaders };
+    if (headers['Authorization']) headers['Authorization'] = 'Bearer <redacted>';
+
+    const payload = {
+      request: { method, url, headers, body: render(requestBody) },
+      response: { statusCode, body: render(responseBody) },
+    };
+
+    try {
+      await info.attach(`${method} ${url.replace(this.baseURL, '')} → ${statusCode}`, {
+        body: JSON.stringify(payload, null, 2),
+        contentType: 'application/json',
+      });
+    } catch {
+      // Attaching must never fail a test
+    }
   }
 
   /**

@@ -13,6 +13,7 @@ import { test as base } from '@playwright/test';
 import { AdminApiClient } from '../utils/admin-api-client';
 import { PlayerApiClient } from '../utils/player-api-client';
 import { AgentApiClient } from '../utils/agent-api-client';
+import { TestHelpers } from './test-helpers';
 import { logger } from '../utils/logger';
 
 type ApiFixtures = {
@@ -22,12 +23,38 @@ type ApiFixtures = {
   authenticatedAdminApi: AdminApiClient;
   authenticatedPlayerApi: PlayerApiClient;
   authenticatedAgentApi: AgentApiClient;
+  reportExpectations: void;
 };
 
 /**
  * Extended Playwright test with API fixtures
  */
 export const test = base.extend<ApiFixtures>({
+  /**
+   * Attaches every assertion's "expected vs actual" to the HTML report, so a
+   * passing test shows what was checked and what the API actually returned,
+   * not just a green tick. Runs automatically for every test.
+   */
+  reportExpectations: [
+    async ({}, use, testInfo) => {
+      TestHelpers.drainChecks(); // drop anything left over from an earlier test
+      await use();
+
+      const checks = TestHelpers.drainChecks();
+      if (checks.length === 0) return;
+
+      try {
+        await testInfo.attach('Expected vs actual', {
+          body: checks.map((line, i) => `${i + 1}. ${line}`).join('\n'),
+          contentType: 'text/plain',
+        });
+      } catch {
+        // reporting must never fail a test
+      }
+    },
+    { auto: true },
+  ],
+
   /**
    * Admin API Client (not authenticated)
    */

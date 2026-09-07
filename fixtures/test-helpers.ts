@@ -3,16 +3,62 @@
  * Common utilities for test setup, assertions, and cleanup
  */
 
-import { expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { ApiResponse } from '../types';
 import { logger } from '../utils/logger';
 
+/**
+ * Expectations recorded during the current test. The `reportExpectations`
+ * fixture in api-fixtures.ts drains this after each test and attaches it to
+ * the HTML report.
+ */
+const recordedChecks: string[] = [];
+
 export class TestHelpers {
+  /**
+   * Record "expected vs actual" for the HTML report.
+   * Playwright only prints that comparison when an assertion fails; this makes
+   * it visible on passing tests too. No-op outside a running test.
+   */
+  private static record(expected: string, actual: unknown): void {
+    const line = `expected ${expected}  ->  actual ${this.brief(actual)}`;
+    recordedChecks.push(line);
+
+    try {
+      test.info()?.annotations?.push({ type: 'check', description: line });
+    } catch {
+      // not inside a running test
+    }
+  }
+
+  /**
+   * Take and clear the expectations recorded so far (used by the report fixture).
+   */
+  static drainChecks(): string[] {
+    return recordedChecks.splice(0, recordedChecks.length);
+  }
+
+  /**
+   * One-line summary of a value for the report annotation
+   */
+  private static brief(value: unknown): string {
+    if (value === null) return 'null';
+    if (value === undefined) return 'undefined';
+    if (Array.isArray(value)) return `array of ${value.length}`;
+    if (typeof value === 'object') {
+      const keys = Object.keys(value as object);
+      return `object {${keys.slice(0, 8).join(', ')}${keys.length > 8 ? ', …' : ''}}`;
+    }
+    const text = String(value);
+    return text.length > 120 ? `${text.slice(0, 120)}…` : text;
+  }
+
   /**
    * Assert successful API response
    */
   static assertSuccess(response: ApiResponse, message?: string) {
     const errorMessage = message || `Expected success but got: ${response.error}`;
+    this.record('success and status < 400', `status ${response.statusCode}, success ${response.success}`);
     expect(response.success, errorMessage).toBeTruthy();
     expect(response.statusCode).toBeLessThan(400);
   }
@@ -22,6 +68,10 @@ export class TestHelpers {
    */
   static assertFailure(response: ApiResponse, message?: string) {
     const errorMessage = message || 'Expected failure but got success';
+    this.record(
+      'failure and status >= 400',
+      `status ${response.statusCode}, error ${response.error ?? 'none'}`
+    );
     expect(response.success, errorMessage).toBeFalsy();
     expect(response.statusCode).toBeGreaterThanOrEqual(400);
   }
@@ -31,6 +81,7 @@ export class TestHelpers {
    */
   static assertStatusCode(response: ApiResponse, expectedCode: number, message?: string) {
     const errorMessage = message || `Expected status ${expectedCode} but got ${response.statusCode}`;
+    this.record(`status ${expectedCode}`, response.statusCode);
     expect(response.statusCode, errorMessage).toBe(expectedCode);
   }
 
@@ -39,6 +90,7 @@ export class TestHelpers {
    */
   static assertHasData(response: ApiResponse, message?: string) {
     const errorMessage = message || 'Expected response to contain data';
+    this.record('response body present', response.data);
     expect(response.data, errorMessage).toBeDefined();
     expect(response.data).not.toBeNull();
   }
@@ -49,6 +101,7 @@ export class TestHelpers {
   static assertDataIsArray(response: ApiResponse, message?: string) {
     this.assertHasData(response);
     const errorMessage = message || 'Expected response data to be an array';
+    this.record('response body is an array', response.data);
     expect(Array.isArray(response.data), errorMessage).toBeTruthy();
   }
 
@@ -57,6 +110,7 @@ export class TestHelpers {
    */
   static assertArrayMinLength(data: any[], minLength: number, message?: string) {
     const errorMessage = message || `Expected array length >= ${minLength}, got ${data.length}`;
+    this.record(`at least ${minLength} item(s)`, data.length);
     expect(data.length, errorMessage).toBeGreaterThanOrEqual(minLength);
   }
 
@@ -64,6 +118,7 @@ export class TestHelpers {
    * Assert object has required properties
    */
   static assertHasProperties(obj: any, properties: string[], message?: string) {
+    this.record(`properties ${properties.join(', ')}`, obj);
     properties.forEach((prop) => {
       const errorMessage = message || `Expected object to have property: ${prop}`;
       expect(obj, errorMessage).toHaveProperty(prop);

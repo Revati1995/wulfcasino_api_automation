@@ -418,3 +418,7 @@ The specs were written against an assumed API and have been mapped, file by file
 | Full | `npm test` | 179 passed, 160 skipped, 0 failed, ~6 min |
 
 `scripts/staging-cleanup.js` reverts side effects left by the legacy specs (dry run by default, `--apply` to execute).
+
+### Seeing the request and response in the report
+
+`npx playwright show-report` opens the HTML report. Every API call a test makes is attached to that test as `METHOD /path → status`, containing the request (headers with the bearer token redacted, body) and the full response body. Assertions also record an `expected … -> actual …` annotation on the test. Both appear on passing tests, not only on failures, so the report doubles as evidence of what the API actually returned.
