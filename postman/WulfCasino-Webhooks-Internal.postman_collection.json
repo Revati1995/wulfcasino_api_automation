@@ -1,0 +1,1357 @@
+{
+  "info": {
+    "name": "WulfCasino — Webhooks & Internal",
+    "description": "Inbound webhooks from third-party providers (Coinflow, Breeze, Sumsub KYC, game providers AleaPlay / SA Games) plus internal test/diagnostic endpoints.\n\n⚠️ These are **not called from Postman in normal operation** — they are documented here for payload reference and for replaying/simulating provider callbacks against a dev environment. Signature headers must be computed per provider (see each request's description).\n\n---\n### Variables\n| Variable | Meaning |\n|---|---|\n| `{{baseUrl}}` | API base URL **including** the `/api/v1` prefix (default `http://localhost:8000/api/v1`) |\n| `{{playerToken}}` | Player JWT — auto-saved by the login requests in the Player collection |\n| `{{agentToken}}` | Agent JWT — agents log in through the same `/auth` endpoints |\n| `{{adminToken}}` | Admin/employee JWT — auto-saved by the admin login request |\n\nImport `WulfCasino-Local.postman_environment.json` and select the **WulfCasino Local** environment before sending requests.\n\n*Generated from the NestJS source (controllers, DTOs, and guards) — request bodies are realistic examples built from the validation DTOs; optional query params are included but disabled.*",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "item": [
+    {
+      "name": "Agent — Breeze Payments",
+      "item": [
+        {
+          "name": "Breeze draft return bridge",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/agent-breeze/return?ref=agent-breeze-draft-1724567890&status=success",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent-breeze",
+                "return"
+              ],
+              "query": [
+                {
+                  "key": "ref",
+                  "value": "agent-breeze-draft-1724567890",
+                  "description": "(required) clientReferenceId of the draft page",
+                  "disabled": false
+                },
+                {
+                  "key": "status",
+                  "value": "success",
+                  "description": "(required) Breeze-reported completion status",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Public return-URL handler: Breeze redirects the agent's browser here after finishing a DRAFT payout page. Materializes the agent payment request then 302-redirects to the admin app. No bearer token.\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Breeze agent payout webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-breeze-signature",
+                "value": "<hmac-sha256-hex-of-body>",
+                "description": "HMAC-SHA256 hex digest of the raw JSON payload signed with the Breeze webhook secret"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agent-breeze/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent-breeze",
+                "webhook"
+              ]
+            },
+            "description": "Breeze webhook receiver for agent payouts. Signature: header x-breeze-signature = HMAC-SHA256 hex of the JSON body using the configured webhook secret (verified only when both secret and header are present). Returns 200.\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"evt_01HZY6X8\",\n  \"type\": \"payout.page.updated\",\n  \"data\": {\n    \"id\": \"pay_123\",\n    \"pageId\": \"page_abc123\",\n    \"clientReferenceId\": \"agent-breeze-1724567890\",\n    \"status\": \"COMPLETED\",\n    \"pendingStatus\": null,\n    \"amount\": 250.5,\n    \"fundingCurrency\": \"USD\",\n    \"releaseMethod\": \"MANUAL\",\n    \"payoutMethod\": \"BANK_ACCOUNT\",\n    \"bankAccountLast4\": \"6789\",\n    \"cardLast4\": null,\n    \"walletAddress\": null,\n    \"customer\": {\n      \"id\": \"cus_1\",\n      \"email\": \"agent@example.com\",\n      \"referenceId\": \"emp-uuid\"\n    },\n    \"errorCode\": null,\n    \"failureReason\": null,\n    \"customerConfirmedAt\": 1724567890\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `agent-breeze`."
+    },
+    {
+      "name": "Agent — Coinflow Payments",
+      "item": [
+        {
+          "name": "Coinflow agent payout webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-coinflow-signature",
+                "value": "<hmac-sha256-hex-of-body>",
+                "description": "HMAC-SHA256 hex digest of the raw JSON payload signed with the Coinflow webhook secret"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agent-coinflow/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent-coinflow",
+                "webhook"
+              ]
+            },
+            "description": "Coinflow webhook receiver for agent payouts. Signature: header x-coinflow-signature = HMAC-SHA256 hex of the JSON body using the configured webhook secret (verified only when both secret and header are present). Returns 200.\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"evt_01HZY6X8\",\n  \"type\": \"withdrawal.updated\",\n  \"data\": {\n    \"id\": \"wd_123456\",\n    \"sessionId\": \"sess_abc123\",\n    \"clientReferenceId\": \"agent-coinflow-1724567890\",\n    \"status\": \"COMPLETED\",\n    \"pendingStatus\": null,\n    \"amount\": 250.5,\n    \"fundingCurrency\": \"USD\",\n    \"payoutMethod\": \"BANK_ACCOUNT\",\n    \"network\": null,\n    \"coin\": null,\n    \"walletAddress\": null,\n    \"transactionHash\": null,\n    \"customer\": {\n      \"id\": \"cus_1\",\n      \"email\": \"agent@example.com\"\n    },\n    \"errorCode\": null,\n    \"failureReason\": null,\n    \"customerConfirmedAt\": 1724567890\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `agent-coinflow`."
+    },
+    {
+      "name": "Agent Packages",
+      "item": [
+        {
+          "name": "Breeze package webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agent/packages/breeze/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent",
+                "packages",
+                "breeze",
+                "webhook"
+              ]
+            },
+            "description": "Breeze webhook — activates the plan on confirmed payment. No guard, no visible signature check in the controller; payload is free-form (any).\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"payment.completed\",\n  \"data\": {\n    \"pageId\": \"page_abc123\",\n    \"clientReferenceId\": \"agent-package-1724567890\",\n    \"status\": \"COMPLETED\",\n    \"amount\": 49.99,\n    \"currency\": \"USD\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Coinflow package webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agent/packages/coinflow/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent",
+                "packages",
+                "coinflow",
+                "webhook"
+              ]
+            },
+            "description": "Coinflow webhook — activates the plan on confirmed payment. No guard, no visible signature check in the controller; payload is free-form (any).\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"Settled\",\n  \"data\": {\n    \"id\": \"pay_abc123\",\n    \"subtotal\": {\n      \"cents\": 4999,\n      \"currency\": \"USD\"\n    },\n    \"webhookInfo\": {\n      \"planId\": \"3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f\",\n      \"userId\": \"8f14e45f-ea3a-4b7c-9d2e-1a2b3c4d5e6f\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `agent-package`."
+    },
+    {
+      "name": "Bonuses & Cashback",
+      "item": [
+        {
+          "name": "Debug welcome bonus config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bonus/debug/check-welcome-bonuses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bonus",
+                "debug",
+                "check-welcome-bonuses"
+              ]
+            },
+            "description": "Debug endpoint (no guard) to inspect what welcome bonuses exist in the database and why they might not be awarding.\n\n**Auth:** none (public endpoint).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `bonus`."
+    },
+    {
+      "name": "Breeze Payments",
+      "item": [
+        {
+          "name": "Breeze payin webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/breeze-payment/payin/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "breeze-payment",
+                "payin",
+                "webhook"
+              ]
+            },
+            "description": "Receives Breeze payment page webhook events; also routes PAYOUT_PAGE_STATUS_UPDATE / PAYOUT_PAGE_PENDING_STATUS_UPDATE payout events to the payout handler. Signature: body 'signature' field = base64 HMAC-SHA256 of a stable key-sorted stringify of body 'data' using the Breeze webhook secret (no signature header). Responds 200 on success (Breeze retries any non-200).\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"PAYMENT_PAGE_STATUS_UPDATE\",\n  \"signature\": \"{{breezePayinWebhookSignature}}\",\n  \"data\": {\n    \"pageId\": \"pp_9f8e7d6c\",\n    \"status\": \"PAID\",\n    \"clientReferenceId\": \"order-001\",\n    \"transactionAmount\": 1000,\n    \"currency\": \"USD\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Breeze payout webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/breeze-payment/payout/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "breeze-payment",
+                "payout",
+                "webhook"
+              ]
+            },
+            "description": "Receives Breeze payout page webhook events. Signature: body 'signature' field = base64 HMAC-SHA256 of a stable stringify of body 'data' using the Breeze payout webhook secret. Responds 200.\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"PAYOUT_PAGE_STATUS_UPDATE\",\n  \"signature\": \"{{breezePayoutWebhookSignature}}\",\n  \"data\": {\n    \"pageId\": \"po_1a2b3c4d\",\n    \"status\": \"COMPLETED\",\n    \"clientReferenceId\": \"payout-7f3a8b2c\",\n    \"amount\": 100,\n    \"fundingCurrency\": \"USDC\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Breeze subscription webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/breeze-payment/subscription/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "breeze-payment",
+                "subscription",
+                "webhook"
+              ]
+            },
+            "description": "Receives Breeze subscription webhook events. Signature: body 'signature' field = base64 HMAC-SHA256 of a stable stringify of body 'data' using the Breeze subscription webhook secret. Responds 200.\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"SUBSCRIPTION_STATUS_UPDATE\",\n  \"signature\": \"{{breezeSubscriptionWebhookSignature}}\",\n  \"data\": {\n    \"subscriptionId\": \"sub_1a2b3c4d\",\n    \"status\": \"ACTIVE\",\n    \"clientReferenceId\": \"breeze-subscription-user-123-1710000000000\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `breeze-payment`."
+    },
+    {
+      "name": "Coinflow Payments",
+      "item": [
+        {
+          "name": "Coinflow payin webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{coinflowWebhookValidationKey}}",
+                "description": "Coinflow dashboard Validation Key"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/coinflow-payment/payin/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "coinflow-payment",
+                "payin",
+                "webhook"
+              ]
+            },
+            "description": "Receives Coinflow payment page webhook events; payout- and subscription-category events sent to this URL are routed to their handlers. Auth: the Authorization header must match the Coinflow dashboard Validation Key (Coinflow does not HMAC-sign the body). Envelope uses eventType (legacy: type).\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"PAYMENT_COMPLETED\",\n  \"data\": {\n    \"id\": \"pay_01HXYZABC\",\n    \"status\": \"settled\",\n    \"subtotal\": {\n      \"cents\": 1000,\n      \"currency\": \"USD\"\n    },\n    \"webhookInfo\": {\n      \"clientReferenceId\": \"order-001\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Coinflow payout webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/coinflow-payment/payout/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "coinflow-payment",
+                "payout",
+                "webhook"
+              ]
+            },
+            "description": "Receives Coinflow payout page webhook events. Signature: body 'signature' field = base64 HMAC-SHA256 of a stable stringify of body 'data' using the Coinflow payout webhook secret (verifyCoinflowPayoutWebhookSignature). Responds 200.\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"PAYOUT_PAGE_STATUS_UPDATE\",\n  \"signature\": \"{{coinflowPayoutWebhookSignature}}\",\n  \"data\": {\n    \"pageId\": \"cfp_1a2b3c4d\",\n    \"status\": \"COMPLETED\",\n    \"clientReferenceId\": \"payout-7f3a8b2c\",\n    \"amount\": 100,\n    \"fundingCurrency\": \"USDC\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Coinflow subscription webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{coinflowWebhookValidationKey}}",
+                "description": "Coinflow dashboard Validation Key"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/coinflow-payment/subscription/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "coinflow-payment",
+                "subscription",
+                "webhook"
+              ]
+            },
+            "description": "Receives Coinflow subscription webhook events. Auth: Authorization header must match the Coinflow dashboard Validation Key (no body HMAC).\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"SUBSCRIPTION_PAYMENT_COMPLETED\",\n  \"category\": \"subscription\",\n  \"data\": {\n    \"subscription\": {\n      \"id\": \"cfsub_1a2b3c4d\",\n      \"status\": \"active\"\n    },\n    \"invoice\": {\n      \"id\": \"inv_01HXYZ\",\n      \"status\": \"paid\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `coinflow-payment`."
+    },
+    {
+      "name": "Games — AleaPlay Provider",
+      "item": [
+        {
+          "name": "Webhook: Authenticate session",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "digest",
+                "value": "{{aleaplay_sha512_digest}}",
+                "description": "SHA-512 signature of the casinoSessionId, keyed with the AleaPlay secret"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/aleaplay/sessions/:casinoSessionId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "aleaplay",
+                "sessions",
+                ":casinoSessionId"
+              ],
+              "variable": [
+                {
+                  "key": "casinoSessionId",
+                  "value": "b1f0c9a8-7d6e-4f5a-9b8c-3d2e1f0a9b8c",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "AleaPlay session authentication callback. Guarded by AleaPlaySignatureGuard: the 'digest' header must carry the SHA-512 signature of the casinoSessionId path param computed with the shared secret key. Returns country, currency (SC/GC by play mode), casinoPlayerId.\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook: Get player balance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "digest",
+                "value": "{{aleaplay_sha512_digest}}",
+                "description": "SHA-512 of casinoSessionId+currency+gameId+integratorId+softwareId with the AleaPlay secret"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/aleaplay/players/:casinoPlayerId/balance?currency=SC&casinoSessionId=b1f0c9a8-7d6e-4f5a-9b8c-3d2e1f0a9b8c",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "aleaplay",
+                "players",
+                ":casinoPlayerId",
+                "balance"
+              ],
+              "query": [
+                {
+                  "key": "currency",
+                  "value": "SC",
+                  "description": "(required) SC (sweeps session) or GC (gold session)",
+                  "disabled": false
+                },
+                {
+                  "key": "casinoSessionId",
+                  "value": "b1f0c9a8-7d6e-4f5a-9b8c-3d2e1f0a9b8c",
+                  "description": "(required) Session id issued at launch",
+                  "disabled": false
+                },
+                {
+                  "key": "gameId",
+                  "value": "521",
+                  "description": "(optional) AleaPlay game id",
+                  "disabled": true
+                },
+                {
+                  "key": "integratorId",
+                  "value": "1",
+                  "description": "(optional) AleaPlay integrator id",
+                  "disabled": true
+                },
+                {
+                  "key": "softwareId",
+                  "value": "42",
+                  "description": "(optional) AleaPlay software id",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "casinoPlayerId",
+                  "value": "8b2c1f7e-4a1d-4c3b-9f2a-1e2d3c4b5a69",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "AleaPlay balance callback. AleaPlaySignatureGuard: 'digest' header = SHA-512 of casinoSessionId + currency + gameId + integratorId + softwareId (concatenated query values) with the secret key. Currency must match the session play mode (SC for sweeps, GC for gold) or 500 INVALID_REQUEST is returned.\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook: Handle transaction",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "digest",
+                "value": "{{aleaplay_sha512_digest}}",
+                "description": "SHA-512 signature of the raw JSON body with the AleaPlay secret"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/aleaplay/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "aleaplay",
+                "transactions"
+              ]
+            },
+            "description": "AleaPlay transaction callback: type = BET | BET_WIN | WIN | ROLLBACK | PROMO_PAYOUT. AleaPlaySignatureGuard: 'digest' header = SHA-512 of the RAW request body with the secret key. Currency must match the session (SC/GC). PROMO_PAYOUT carries a nested promo object (e.g. operatorFreeSpin with bonusId = casinoBonusId from the grant). Returns 201 for NEW tombstones, 200 otherwise.\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"9001234567\",\n  \"type\": \"BET\",\n  \"amount\": 1.5,\n  \"currency\": \"SC\",\n  \"casinoSessionId\": \"b1f0c9a8-7d6e-4f5a-9b8c-3d2e1f0a9b8c\",\n  \"player\": {\n    \"casinoPlayerId\": \"8b2c1f7e-4a1d-4c3b-9f2a-1e2d3c4b5a69\"\n  },\n  \"game\": {\n    \"id\": 521\n  },\n  \"software\": {\n    \"id\": 42\n  },\n  \"integratorId\": 1,\n  \"round\": {\n    \"id\": \"round-778899\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `games/aleaplay`."
+    },
+    {
+      "name": "Games — SA Games Provider",
+      "item": [
+        {
+          "name": "Webhook: GetUserBalance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/sagames/GetUserBalance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sagames",
+                "GetUserBalance"
+              ]
+            },
+            "description": "SA Gaming balance callback. Real payloads are form-urlencoded and DES-encrypted in the 'q' parameter (decrypted via decryptSAGamingRequest); plaintext username/currency fields are also accepted. Response is XML with an error code (0 = success).\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"SA7E7WULF123\",\n  \"currency\": \"SC\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook: PlaceBet",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/sagames/PlaceBet",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sagames",
+                "PlaceBet"
+              ]
+            },
+            "description": "SA Gaming bet placement callback. Payload arrives form-urlencoded with a DES-encrypted 'q' parameter (or a bare encrypted string); decrypted fields include username, currency, amount, txnid, gameid. Responds XML (0 = success).\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"SA7E7WULF123\",\n  \"currency\": \"SC\",\n  \"amount\": 10,\n  \"txnid\": \"TXN-100001\",\n  \"gameid\": \"BAC-01\",\n  \"gametype\": \"baccarat\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook: PlayerWin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/sagames/PlayerWin",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sagames",
+                "PlayerWin"
+              ]
+            },
+            "description": "SA Gaming win settlement callback (same encrypted transport as PlaceBet). Responds XML.\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"SA7E7WULF123\",\n  \"currency\": \"SC\",\n  \"amount\": 25,\n  \"txnid\": \"TXN-100002\",\n  \"gameid\": \"BAC-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook: PlayerLost",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/sagames/PlayerLost",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sagames",
+                "PlayerLost"
+              ]
+            },
+            "description": "SA Gaming loss settlement callback (same encrypted transport as PlaceBet). Responds XML.\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"SA7E7WULF123\",\n  \"currency\": \"SC\",\n  \"amount\": 0,\n  \"txnid\": \"TXN-100003\",\n  \"gameid\": \"BAC-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook: PlaceBetCancel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/sagames/PlaceBetCancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sagames",
+                "PlaceBetCancel"
+              ]
+            },
+            "description": "SA Gaming bet cancellation/rollback callback (same encrypted transport as PlaceBet). Responds XML.\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"SA7E7WULF123\",\n  \"currency\": \"SC\",\n  \"amount\": 10,\n  \"txnid\": \"TXN-100004\",\n  \"txn_reverse_id\": \"TXN-100001\",\n  \"gameid\": \"BAC-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook: BalanceAdjustment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/sagames/BalanceAdjustment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sagames",
+                "BalanceAdjustment"
+              ]
+            },
+            "description": "SA Gaming balance adjustment callback (same encrypted transport as PlaceBet). Responds XML.\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"SA7E7WULF123\",\n  \"currency\": \"SC\",\n  \"amount\": 5,\n  \"txnid\": \"TXN-100005\",\n  \"adjust_type\": \"credit\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `games/sagames`."
+    },
+    {
+      "name": "Games & Lobby",
+      "item": [
+        {
+          "name": "Webhook: Universal provider endpoint",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/games/webhooks/:provider",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "games",
+                "webhooks",
+                ":provider"
+              ],
+              "variable": [
+                {
+                  "key": "provider",
+                  "value": "sagames",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Single entry point for game provider callbacks; auto-detects action from the payload and routes to balance or transaction handling. provider enum: sagames | aleaplay (aleaplay is REJECTED here and must use the dedicated /aleaplay controller, which is signature-guarded). No auth guard on the route itself; provider payload verification happens inside the adapters (SAGames payloads arrive DES-encrypted).\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"GetUserBalance\",\n  \"username\": \"SA7E7WULF123\",\n  \"currency\": \"SC\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook: Provider balance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/games/webhooks/:provider/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "games",
+                "webhooks",
+                ":provider",
+                "balance"
+              ],
+              "variable": [
+                {
+                  "key": "provider",
+                  "value": "sagames",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Dedicated balance callback for a provider. Response Content-Type is XML for sagames, JSON otherwise. AleaPlay is rejected here (must use /aleaplay).\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"SA7E7WULF123\",\n  \"currency\": \"SC\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook: Provider transaction",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/games/webhooks/:provider/transaction",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "games",
+                "webhooks",
+                ":provider",
+                "transaction"
+              ],
+              "variable": [
+                {
+                  "key": "provider",
+                  "value": "sagames",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Dedicated game-transaction callback for a provider (bet/win/lose/cancel). AleaPlay is rejected here (must use /aleaplay).\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"PlaceBet\",\n  \"username\": \"SA7E7WULF123\",\n  \"currency\": \"SC\",\n  \"amount\": 10,\n  \"txnid\": \"TXN-100001\",\n  \"gameid\": \"BAC-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook: List registered providers",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/games/webhooks/providers/list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "games",
+                "webhooks",
+                "providers",
+                "list"
+              ]
+            },
+            "description": "Diagnostic: returns the list of registered game provider adapters. No guard.\n\n**Auth:** none (public endpoint).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `games`."
+    },
+    {
+      "name": "Health & Diagnostics",
+      "item": [
+        {
+          "name": "Enqueue games reconcile job",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/queue-test/games",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "queue-test",
+                "games"
+              ]
+            },
+            "description": "Test/debug endpoint (no guard): enqueues a games reconcile job on the games queue.\n\n**Auth:** none (public endpoint).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Enqueue waitlist rank recalculation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/queue-test/waitlist",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "queue-test",
+                "waitlist"
+              ]
+            },
+            "description": "Test/debug endpoint (no guard): enqueues a waitlist rank recalculation job.\n\n**Auth:** none (public endpoint).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Redis round-trip test",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/redis-test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "redis-test"
+              ]
+            },
+            "description": "Test/debug endpoint (no guard): sets key 'hello' to 'world' with a 10s TTL in Redis and reads it back.\n\n**Auth:** none (public endpoint).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `root`."
+    },
+    {
+      "name": "KYC (Sumsub)",
+      "item": [
+        {
+          "name": "Sumsub webhook health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/kyc/sumsub/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kyc",
+                "sumsub",
+                "webhook"
+              ]
+            },
+            "description": "Health check for the Sumsub webhook URL; returns { ok: true }.\n\n**Auth:** none (public endpoint).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Sumsub webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-payload-digest",
+                "value": "a1b2c3d4e5f6...",
+                "description": "HMAC digest of the raw body computed with the webhook secret"
+              },
+              {
+                "key": "x-payload-digest-alg",
+                "value": "HMAC_SHA256_HEX",
+                "description": "Digest algorithm Sumsub used"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/kyc/sumsub/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "kyc",
+                "sumsub",
+                "webhook"
+              ]
+            },
+            "description": "Receives Sumsub applicant events. The raw body's HMAC digest is verified against SUMSUB_WEBHOOK_SECRET using the x-payload-digest / x-payload-digest-alg headers; 401 on mismatch.\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"applicantReviewed\",\n  \"applicantId\": \"64a8f0c9d2e7b1a4c5d9e8f1\",\n  \"externalUserId\": \"3f0c9d2e-7b1a-4c5d-9e8f-123456789abc\",\n  \"reviewResult\": {\n    \"reviewAnswer\": \"GREEN\"\n  },\n  \"reviewStatus\": \"completed\",\n  \"createdAtMs\": \"2026-08-25T10:00:00.000Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `kyc`."
+    },
+    {
+      "name": "Payouts",
+      "item": [
+        {
+          "name": "Coinflow payouts webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-coinflow-signature",
+                "value": "{{coinflowPayoutWebhookSignature}}",
+                "description": "base64 HMAC-SHA256 of the raw body computed with the Coinflow webhook secret"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payouts/webhook/coinflow",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payouts",
+                "webhook",
+                "coinflow"
+              ]
+            },
+            "description": "Receives Coinflow payout status events. Signature: x-coinflow-signature header (or body 'signature' field) = base64 HMAC-SHA256 of the raw request body (fallback: stable key-sorted stringify of body.data) using the Coinflow webhook secret. Always ACKs 200 after a valid signature; invalid signature returns 400.\n\n**Auth:** provider webhook — authenticated by signature/secret, not a JWT (see description).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"PAYOUT_COMPLETED\",\n  \"data\": {\n    \"payoutId\": \"wd_01HXYZ\",\n    \"status\": \"completed\",\n    \"amount\": 5000,\n    \"currency\": \"USD\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `payouts`."
+    },
+    {
+      "name": "Promotions",
+      "item": [
+        {
+          "name": "Reset user promotion state (dev)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/promotions/test/reset-user/:userId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "promotions",
+                "test",
+                "reset-user",
+                ":userId"
+              ],
+              "variable": [
+                {
+                  "key": "userId",
+                  "value": "123e4567-e89b-12d3-a456-426614174000",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "DEV ONLY — deletes all user_promotion records and resets depositCount to 0 so the user can re-test promotions from scratch. NO guard.\n\n**Auth:** none (public endpoint).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Diagnose user promotion (dev)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/promotions/test/diagnose/:userId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "promotions",
+                "test",
+                "diagnose",
+                ":userId"
+              ],
+              "variable": [
+                {
+                  "key": "userId",
+                  "value": "123e4567-e89b-12d3-a456-426614174000",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "DEV ONLY — explains why a promotion is or is not applying for a user (per-promotion rejection reasons against the user's next deposit number). NO guard.\n\n**Auth:** none (public endpoint).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Force reseed promotions (dev)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/promotions/test/force-reseed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "promotions",
+                "test",
+                "force-reseed"
+              ]
+            },
+            "description": "DEV ONLY — force-update existing promotions with the latest seed values (minDepositAmount, etc.), creating any missing ones. NO guard.\n\n**Auth:** none (public endpoint).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `promotions`."
+    },
+    {
+      "name": "VIP Program",
+      "item": [
+        {
+          "name": "Test VIP weekly cashback gate",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/test/vip/weekly-cashback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "test",
+                "vip",
+                "weekly-cashback"
+              ]
+            },
+            "description": "Test endpoint for VIP feature gating. Guards: UserJwtAuthGuard + VipFeatureGuard with @RequireVipFeature('weeklyCashback') — succeeds only when the caller's VIP tier unlocks weeklyCashback.\n\n**Auth:** Bearer JWT (player/agent token from `POST /auth/login`)."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `vip`."
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000/api/v1",
+      "type": "string"
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "name": "wulfcasino-api-automation",
+  "version": "1.0.0",
+  "description": "API Automation Testing Framework for WulfCasino Admin, Player, and Agent APIs",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test",
+    "test:admin": "playwright test tests/admin --project=chromium",
+    "test:player": "playwright test tests/player --project=chromium",
+    "test:agent": "playwright test tests/agent --project=chromium",
+    "test:smoke": "playwright test --grep @smoke",
+    "test:regression": "playwright test --grep @regression",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:report": "playwright show-report",
+    "test:ui": "playwright test --ui",
+    "lint": "eslint . --ext .ts",
+    "lint:fix": "eslint . --ext .ts --fix",
+    "format": "prettier --write \"**/*.{ts,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,json,md}\"",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [
+    "api",
+    "automation",
+    "testing",
+    "playwright",
+    "typescript",
+    "casino",
+    "wulfcasino"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^22.7.5",
+    "@typescript-eslint/eslint-plugin": "^8.8.1",
+    "@typescript-eslint/parser": "^8.8.1",
+    "dotenv": "^16.4.5",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-playwright": "^1.6.2",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^10.6.0",
+    "allure-playwright": "^3.0.3",
+    "winston": "^3.15.0"
+  }
+}

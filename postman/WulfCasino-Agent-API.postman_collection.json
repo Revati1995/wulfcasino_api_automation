@@ -1,0 +1,2057 @@
+{
+  "info": {
+    "name": "WulfCasino — Agent API",
+    "description": "Agent/affiliate-portal REST API. **Agents are employee accounts** — they log in through `POST admin/auth/login` (see the Authentication folder here) and every agent endpoint is protected by the employee `JwtAuthGuard`. The collection sends Bearer `{{agentToken}}`.\n\nCovers affiliate stats, sub-agent management, commissions, agent deposits/withdrawals via Breeze & Coinflow, packages, promo codes, and agent notifications.\n\n---\n### Variables\n| Variable | Meaning |\n|---|---|\n| `{{baseUrl}}` | API base URL **including** the `/api/v1` prefix (default `http://localhost:8000/api/v1`) |\n| `{{playerToken}}` | Player JWT — auto-saved by the login requests in the Player collection |\n| `{{agentToken}}` | Agent JWT — agents log in through the same `/auth` endpoints |\n| `{{adminToken}}` | Admin/employee JWT — auto-saved by the admin login request |\n\nImport `WulfCasino-Local.postman_environment.json` and select the **WulfCasino Local** environment before sending requests.\n\n*Generated from the NestJS source (controllers, DTOs, and guards) — request bodies are realistic examples built from the validation DTOs; optional query params are included but disabled.*",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{agentToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "description": "Agents are employee accounts: they log in through the **admin** auth endpoints (`admin/auth/*`), not the player `/auth` flow. This login stores the JWT in `{{agentToken}}`.",
+      "item": [
+        {
+          "name": "Agent login (via admin auth)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Logs an agent in with their employee credentials. The response JWT is auto-saved to `{{agentToken}}` by the test script, authorizing every other request in this collection.\n\n**Auth:** none (public endpoint).",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"agent@example.com\",\n  \"password\": \"StrongPassword@123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Auto-save the JWT to the environment so every other request in this",
+                  "// collection is authorized immediately after login.",
+                  "try {",
+                  "  const json = pm.response.json();",
+                  "  const token =",
+                  "    json?.accessToken || json?.access_token || json?.token ||",
+                  "    json?.data?.accessToken || json?.data?.access_token || json?.data?.token ||",
+                  "    json?.data?.tokens?.accessToken || json?.tokens?.accessToken;",
+                  "  if (token) { pm.environment.set('agentToken', token); console.log('Saved agentToken'); }",
+                  "  const refresh = json?.refreshToken || json?.data?.refreshToken || json?.data?.tokens?.refreshToken;",
+                  "  if (refresh) { pm.environment.set('agentRefreshToken', refresh); }",
+                  "} catch (e) { /* non-JSON response */ }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Affiliate",
+      "item": [
+        {
+          "name": "Get my agent referral stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/referral/agent-stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "referral",
+                "agent-stats"
+              ],
+              "query": [
+                {
+                  "key": "startDate",
+                  "value": "2026-08-01",
+                  "description": "(optional) ISO date — period start",
+                  "disabled": true
+                },
+                {
+                  "key": "endDate",
+                  "value": "2026-08-25",
+                  "description": "(optional) ISO date — period end",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Agent referral statistics for the logged-in agent. startDate/endDate scope period metrics (gameplay, bonuses, fees, commission); wallet balances are current state and ignore the range.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Agent claim referral earnings",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/referral/claim",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "referral",
+                "claim"
+              ]
+            },
+            "description": "Logged-in agent claims their available referral earnings.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Update agent referral code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/referral/code",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "referral",
+                "code"
+              ]
+            },
+            "description": "Logged-in agent updates their custom referral code.\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"AGENTCODE1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get my claim history (agent)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/referral/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "referral",
+                "history"
+              ]
+            },
+            "description": "Logged-in agent's referral claim history.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get my earning history (agent)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/referral/earnings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "referral",
+                "earnings"
+              ]
+            },
+            "description": "Logged-in agent's detailed referral earning history.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get sub-agent (parent agent)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/referral/sub-agent/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "referral",
+                "sub-agent",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "8f14e45f-ea3a-4b7c-9d2e-1a2b3c4d5e6f",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Get a specific sub-agent by ID — parent agent only (ownership enforced against the caller).\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Update sub-agent (parent agent)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/referral/sub-agent/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "referral",
+                "sub-agent",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "8f14e45f-ea3a-4b7c-9d2e-1a2b3c4d5e6f",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Update a sub-agent — parent agent only. Body is a free-form partial of the sub-agent profile (no DTO in controller).\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"Sub Agent One\",\n  \"phone\": \"+919876543210\",\n  \"commissionPercentage\": 30\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete sub-agent (parent agent)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/referral/sub-agent/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "referral",
+                "sub-agent",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "8f14e45f-ea3a-4b7c-9d2e-1a2b3c4d5e6f",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Delete a sub-agent — parent agent only.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Register sub-agent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/referral/register-sub-agent",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "referral",
+                "register-sub-agent"
+              ]
+            },
+            "description": "Register a new sub-agent under an existing agent. Extra guard AgentPackageFeatureGuard with @RequireAgentFeature('subAgentCreation'). force=true is an admin-only override to create even when the email/phone already belongs to a player; agents are hard-blocked. Body: CreateSubAgentDto.\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"sub_agent_01\",\n  \"email\": \"subagent@example.com\",\n  \"password\": \"Password123!\",\n  \"commissionPercentage\": 40,\n  \"referralCode\": \"SUB123X\",\n  \"isReferralActive\": true,\n  \"parentAgentId\": \"8f14e45f-ea3a-4b7c-9d2e-1a2b3c4d5e6f\",\n  \"phone\": \"+919876543210\",\n  \"gender\": \"Male\",\n  \"dateOfBirth\": \"1995-01-01\",\n  \"fullName\": \"John Doe\",\n  \"displayName\": \"JohnD\",\n  \"ethnicity\": \"Asian\",\n  \"state\": \"California\",\n  \"country\": \"USA\",\n  \"pinCode\": \"90001\",\n  \"force\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List sub-agent payout requests",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/referral/sub-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "referral",
+                "sub-requests"
+              ]
+            },
+            "description": "Get pending payout requests from sub-agents — parent agent only.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "List sub-agent payout history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/referral/sub-history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "referral",
+                "sub-history"
+              ]
+            },
+            "description": "Get payout history of sub-agents — parent agent only.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Approve sub-agent payout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/referral/approve-payout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "referral",
+                "approve-payout"
+              ]
+            },
+            "description": "Parent agent approves a sub-agent payout request.\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"claimId\": \"3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Reject sub-agent payout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/referral/reject-payout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "referral",
+                "reject-payout"
+              ]
+            },
+            "description": "Parent agent rejects a sub-agent payout request.\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"claimId\": \"3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `affiliate`."
+    },
+    {
+      "name": "Agent Packages",
+      "item": [
+        {
+          "name": "Get my current package",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/agent/packages/current",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent",
+                "packages",
+                "current"
+              ]
+            },
+            "description": "Agent gets their current active package. JwtAuthGuard (employee token — agents authenticate as employees here).\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get packaging status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/agent/packages/packaging-status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent",
+                "packages",
+                "packaging-status"
+              ]
+            },
+            "description": "Whether packaging is disabled for the caller — globally (no active packages) or because the admin disabled this agent's own plan. When true, all package rules/feature gates are lifted.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Buy package",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agent/packages/buy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent",
+                "packages",
+                "buy"
+              ]
+            },
+            "description": "Agent buys a package (direct/dummy payment path).\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f\",\n  \"autoRenew\": false,\n  \"paymentToken\": \"DUMMY_OK\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Upgrade package",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agent/packages/upgrade",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent",
+                "packages",
+                "upgrade"
+              ]
+            },
+            "description": "Agent upgrades to a different package. mode currently only supports IMMEDIATE.\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newPlanId\": \"3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f\",\n  \"mode\": \"IMMEDIATE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Breeze package checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agent/packages/breeze/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent",
+                "packages",
+                "breeze",
+                "checkout"
+              ]
+            },
+            "description": "Create a Breeze hosted checkout to buy/upgrade a package. Inline body (no DTO class).\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f\",\n  \"successReturnUrl\": \"https://admin.example.com/agent/packages/success\",\n  \"failReturnUrl\": \"https://admin.example.com/agent/packages/fail\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Breeze package payment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/agent/packages/breeze/verify?pageId=page_abc123&planId=3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent",
+                "packages",
+                "breeze",
+                "verify"
+              ],
+              "query": [
+                {
+                  "key": "pageId",
+                  "value": "page_abc123",
+                  "description": "(required) Breeze hosted page id from the return redirect",
+                  "disabled": false
+                },
+                {
+                  "key": "planId",
+                  "value": "3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f",
+                  "description": "(required) Package plan id being purchased",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Verify a returned Breeze payment and activate the plan.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Coinflow package checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agent/packages/coinflow/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent",
+                "packages",
+                "coinflow",
+                "checkout"
+              ]
+            },
+            "description": "Create an embedded Coinflow recurring checkout to buy/upgrade a package. Inline body (no DTO class).\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f\",\n  \"customerEmail\": \"agent@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Confirm Coinflow package checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agent/packages/coinflow/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent",
+                "packages",
+                "coinflow",
+                "confirm"
+              ]
+            },
+            "description": "Confirm a Coinflow checkout from the in-page success event and activate the plan (webhook-independent confirm). Inline body (no DTO class).\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f\",\n  \"paymentId\": \"pay_abc123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get my package history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/agent/packages/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent",
+                "packages",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "BUY",
+                  "description": "(optional) Enum: BUY | UPGRADE | RENEW | CANCEL",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "SUCCESS",
+                  "description": "(optional) Enum: SUCCESS | FAILED | PENDING",
+                  "disabled": true
+                },
+                {
+                  "key": "toPlanId",
+                  "value": "3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f",
+                  "description": "(optional) Filter by destination plan id (UUID)",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Agent's own package transaction history.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `agent-package`."
+    },
+    {
+      "name": "Agent Payments",
+      "item": [
+        {
+          "name": "Create payment request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-payment/request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-payment",
+                "request"
+              ]
+            },
+            "description": "Sub-agent or agent creates a payout request. paymentMethod enum: BANK | CRYPTO — only for AGENT-initiated direct requests; paymentDetails required when paymentMethod is set.\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100.5,\n  \"note\": \"Weekly settlement payout\",\n  \"paymentMethod\": \"BANK\",\n  \"paymentDetails\": {\n    \"accountNumber\": \"123456789\",\n    \"ifsc\": \"HDFC0001234\",\n    \"holderName\": \"John Doe\",\n    \"bankName\": \"HDFC Bank\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List my payment requests",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-payment/my-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-payment",
+                "my-requests"
+              ]
+            },
+            "description": "List the caller's own payment requests.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get my payout-lock state",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-payment/payout-lock",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-payment",
+                "payout-lock"
+              ]
+            },
+            "description": "Whether the admin payout cooldown currently blocks a new payout for the caller, and how long is left.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel my payment request",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-payment/my-requests/:id/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-payment",
+                "my-requests",
+                ":id",
+                "cancel"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Requester cancels their own pending payout request and unfreezes the funds.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit payment details",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-payment/my-requests/:id/payment-details",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-payment",
+                "my-requests",
+                ":id",
+                "payment-details"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Sub-agent submits payment details after parent-agent approval. paymentMethod enum: BANK | CRYPTO. Bank details: { accountNumber, ifsc, holderName, bankName }; crypto: { address, network, coin }.\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentMethod\": \"CRYPTO\",\n  \"paymentDetails\": {\n    \"address\": \"0xabc1234567890def1234567890abc1234567890d\",\n    \"network\": \"ERC20\",\n    \"coin\": \"USDT\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List sub-agent requests (parent agent)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-payment/agent/sub-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-payment",
+                "agent",
+                "sub-requests"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "PENDING_AGENT",
+                  "description": "(optional) Enum: PENDING_AGENT | AGENT_APPROVED | PENDING_ADMIN | ADMIN_APPROVED | COMPLETED | REJECTED_BY_AGENT | REJECTED_BY_ADMIN",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Parent agent lists sub-agent payment requests.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Agent approve sub-agent request",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-payment/agent/:id/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-payment",
+                "agent",
+                ":id",
+                "approve"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Parent agent approves a sub-agent payout request.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Agent reject sub-agent request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-payment/agent/:id/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-payment",
+                "agent",
+                ":id",
+                "reject"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Parent agent rejects a sub-agent payout request with a reason.\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Insufficient commission balance\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `agent-payment`."
+    },
+    {
+      "name": "Agent — Breeze Payments",
+      "item": [
+        {
+          "name": "Create Breeze payout page for request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-breeze/pages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-breeze",
+                "pages"
+              ]
+            },
+            "description": "Sub-agent creates a hosted Breeze payout page for their existing agent-payment request. releaseMethod enum: MANUAL | AUTOMATIC. preferredPayoutMethods items enum: BANK_ACCOUNT | CARD | CRYPTO_WALLET.\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentPaymentRequestId\": \"3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f\",\n  \"fundingCurrency\": \"USD\",\n  \"releaseMethod\": \"MANUAL\",\n  \"customerEmail\": \"agent@example.com\",\n  \"preferredPayoutMethods\": [\n    \"BANK_ACCOUNT\",\n    \"CRYPTO_WALLET\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Breeze draft payout page",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-breeze/pages/draft",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-breeze",
+                "pages",
+                "draft"
+              ]
+            },
+            "description": "Direct agent opens a hosted Breeze page WITHOUT first creating a payout request; the request is materialized when Breeze confirms a payout method. releaseMethod enum: MANUAL | AUTOMATIC. preferredPayoutMethods items enum: BANK_ACCOUNT | CARD | CRYPTO_WALLET.\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 250.5,\n  \"note\": \"Weekly commission payout\",\n  \"fundingCurrency\": \"USD\",\n  \"releaseMethod\": \"MANUAL\",\n  \"customerEmail\": \"agent@example.com\",\n  \"preferredPayoutMethods\": [\n    \"BANK_ACCOUNT\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Breeze page by request",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-breeze/pages/by-request/:requestId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-breeze",
+                "pages",
+                "by-request",
+                ":requestId"
+              ],
+              "variable": [
+                {
+                  "key": "requestId",
+                  "value": "3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Get the Breeze payout page tied to an agent-payment request.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `agent-breeze`."
+    },
+    {
+      "name": "Agent — Coinflow Payments",
+      "item": [
+        {
+          "name": "Create Coinflow payout for request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-coinflow/payouts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-coinflow",
+                "payouts"
+              ]
+            },
+            "description": "Sub-agent/agent creates a Coinflow payout for their existing agent-payment request. releaseMethod enum: MANUAL | AUTOMATIC. successReturnUrl is where Coinflow sends the requester after linking a bank account (falls back to ADMIN_FRONTEND_URL).\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentPaymentRequestId\": \"3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f\",\n  \"fundingCurrency\": \"USD\",\n  \"releaseMethod\": \"MANUAL\",\n  \"customerEmail\": \"agent@example.com\",\n  \"successReturnUrl\": \"https://admin.example.com/agent/payouts/return\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Coinflow draft payout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-coinflow/payouts/draft",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-coinflow",
+                "payouts",
+                "draft"
+              ]
+            },
+            "description": "Direct agent opens a hosted Coinflow page WITHOUT first creating a payout request; the request is materialized only on confirm. releaseMethod enum: MANUAL | AUTOMATIC.\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 250.5,\n  \"note\": \"Weekly commission payout\",\n  \"fundingCurrency\": \"USD\",\n  \"releaseMethod\": \"MANUAL\",\n  \"customerEmail\": \"agent@example.com\",\n  \"successReturnUrl\": \"https://admin.example.com/agent/payouts/return\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Coinflow payout by request",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-coinflow/payouts/by-request/:requestId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-coinflow",
+                "payouts",
+                "by-request",
+                ":requestId"
+              ],
+              "variable": [
+                {
+                  "key": "requestId",
+                  "value": "3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Get the Coinflow payout tied to an agent-payment request.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "List linked Coinflow payout methods",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-coinflow/payouts/:id/methods",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-coinflow",
+                "payouts",
+                ":id",
+                "methods"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Agent/sub-agent lists their linked Coinflow payout destinations, each with the withdraw speeds it can be released over.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Unlink Coinflow payout method",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-coinflow/payouts/:id/methods/:token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-coinflow",
+                "payouts",
+                ":id",
+                "methods",
+                ":token"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f",
+                  "description": ""
+                },
+                {
+                  "key": "token",
+                  "value": "acct_tok_9f8e7d6c",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Agent/sub-agent unlinks one of their Coinflow destinations; returns the refreshed list.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Confirm Coinflow payout method",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-coinflow/payouts/:id/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-coinflow",
+                "payouts",
+                ":id",
+                "confirm"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Sub-agent/agent confirms the payout method linked in the hosted Coinflow page. All fields optional (account token/method normally resolved server-side via Get Withdrawer). payoutSpeed enum: asap | same_day | standard | card | iban | pix | eft | venmo | paypal | wire | interac.\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"account\": \"acct_tok_9f8e7d6c\",\n  \"payoutMethod\": \"BANK_ACCOUNT\",\n  \"walletAddress\": \"0xAbC1234567890dEf1234567890AbC1234567890d\",\n  \"withdrawalId\": \"wd_123456\",\n  \"payoutSpeed\": \"standard\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `agent-coinflow`."
+    },
+    {
+      "name": "Promo Codes",
+      "item": [
+        {
+          "name": "Agent create promo code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agent/promo-codes/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent",
+                "promo-codes",
+                "create"
+              ]
+            },
+            "description": "Agent creates a promo code (goes through approval flow when settings are manual). discountType enum: percentage | flat.\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"SAVE20\",\n  \"description\": \"20% off any package\",\n  \"discountType\": \"percentage\",\n  \"discountValue\": 20,\n  \"minPurchaseAmount\": 0,\n  \"maxDiscountAmount\": 50,\n  \"maxPurchaseAmount\": null,\n  \"maxUsage\": 100,\n  \"maxUsagePerUser\": 1,\n  \"agent\": \"8f14e45f-ea3a-4b7c-9d2e-1a2b3c4d5e6f\",\n  \"currency\": \"USD\",\n  \"startDate\": \"2026-08-01T00:00:00.000Z\",\n  \"endDate\": \"2026-09-01T00:00:00.000Z\",\n  \"isActive\": true,\n  \"freeSpinConfigId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Agent list promo codes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/agent/promo-codes/all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent",
+                "promo-codes",
+                "all"
+              ],
+              "query": [
+                {
+                  "key": "activeOnly",
+                  "value": "true",
+                  "description": "(optional) String 'true' to return only active codes",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get all promo codes created by the logged-in agent.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Agent get promo code",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/agent/promo-codes/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent",
+                "promo-codes",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Get a promo code by ID — agent-owned only.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Agent update promo code",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agent/promo-codes/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent",
+                "promo-codes",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Update a promo code — agent-owned only. Body: partial CreatePromoCodeDto.\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated description\",\n  \"discountValue\": 25,\n  \"isActive\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Agent delete promo code",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/agent/promo-codes/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agent",
+                "promo-codes",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Delete a promo code — agent-owned only. Returns 204 No Content.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `promo-code`."
+    },
+    {
+      "name": "Commission Change Requests",
+      "item": [
+        {
+          "name": "Propose commission change",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/commission-change-requests/request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "commission-change-requests",
+                "request"
+              ]
+            },
+            "description": "Agent proposes a commission change for a sub-agent (needs sub-agent approval). commissions is a per-category map { categoryName: rate }.\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subAgentId\": \"8f14e45f-ea3a-4b7c-9d2e-1a2b3c4d5e6f\",\n  \"commissions\": {\n    \"slots\": 20,\n    \"tableGames\": 15\n  },\n  \"note\": \"Raising your slots share from next week\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List my commission-change proposals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/commission-change-requests/mine",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "commission-change-requests",
+                "mine"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "PENDING",
+                  "description": "(optional) Enum: PENDING | APPROVED | REJECTED",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "(optional) Default 1, min 1",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "(optional) Default 50, min 1",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Agent lists their own commission-change proposals (paged).\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Sub-agent inbox",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/commission-change-requests/inbox",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "commission-change-requests",
+                "inbox"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "PENDING",
+                  "description": "(optional) Enum: PENDING | APPROVED | REJECTED",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Sub-agent lists commission-change requests addressed to them.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Approve commission change",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/commission-change-requests/:id/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "commission-change-requests",
+                ":id",
+                "approve"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Sub-agent approves a commission change, which applies it.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Reject commission change",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/commission-change-requests/:id/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "commission-change-requests",
+                ":id",
+                "reject"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "3c9d4f7e-1a2b-4c5d-8e9f-0a1b2c3d4e5f",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Sub-agent rejects a commission change with a reason and an optional counter-proposal map.\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Rate too low for my volume\",\n  \"counterCommissions\": {\n    \"slots\": 25,\n    \"tableGames\": 18\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `commission-change-request`."
+    },
+    {
+      "name": "Sub-Agent Delete Requests",
+      "item": [
+        {
+          "name": "Request sub-agent deletion / status change",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/sub-agent-delete-requests/request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "sub-agent-delete-requests",
+                "request"
+              ]
+            },
+            "description": "Agent requests deletion (or a status change) of a sub-agent — needs admin approval. type enum: DELETE | STATUS (default DELETE). targetBlocked applies to STATUS requests only (true = deactivate).\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subAgentId\": \"8f14e45f-ea3a-4b7c-9d2e-1a2b3c4d5e6f\",\n  \"reason\": \"Sub-agent inactive for 90 days\",\n  \"type\": \"DELETE\",\n  \"targetBlocked\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List my deletion requests",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/sub-agent-delete-requests/mine",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "sub-agent-delete-requests",
+                "mine"
+              ]
+            },
+            "description": "Agent lists their own sub-agent deletion/status requests.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `sub-agent-delete-request`."
+    },
+    {
+      "name": "Agent Notifications",
+      "item": [
+        {
+          "name": "Send agent notification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-notification/send",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-notification",
+                "send"
+              ]
+            },
+            "description": "Admin->agent, admin->sub-agent or agent->own sub-agent notification; sender from JWT, permission enforced in service. type enum (AgentNotificationType): COMMISSION_CHANGE, COMMISSION_PAYOUT, AGENT_ACTIVATION, AGENT_DEACTIVATION, DOWNLINE_ASSIGNED, DOWNLINE_REMOVED, ANNOUNCEMENT, SYSTEM_MAINTENANCE, PROMOTION, MESSAGE (default), DEPOSIT, REDEEM, PAYOUT_REQUEST, KYC, USER_EVENT, OTHER.\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"recipientId\": \"3f0c9d2e-7b1a-4c5d-9e8f-123456789abc\",\n  \"type\": \"MESSAGE\",\n  \"title\": \"Message from platform\",\n  \"message\": \"Please review the updated payout schedule.\",\n  \"data\": {\n    \"link\": \"/payouts\"\n  },\n  \"expiresAt\": \"2026-09-20T00:00:00Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "My agent notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-notification/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-notification",
+                "me"
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "DEPOSIT",
+                  "description": "(optional) Filter by AgentNotificationType",
+                  "disabled": true
+                },
+                {
+                  "key": "senderType",
+                  "value": "USER",
+                  "description": "(optional) SYSTEM | ADMIN | AGENT | SUBAGENT | USER — powers admin inbox tabs",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "deposit",
+                  "description": "(optional) Free-text over title, message, sender name",
+                  "disabled": true
+                },
+                {
+                  "key": "isRead",
+                  "value": "false",
+                  "description": "(optional) Filter by read status ('true'/'false')",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "(optional) 1-based page",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "(optional) Items per page, max 100",
+                  "disabled": true
+                },
+                {
+                  "key": "sortBy",
+                  "value": "createdAt",
+                  "description": "(optional) createdAt | updatedAt | readAt",
+                  "disabled": true
+                },
+                {
+                  "key": "sortOrder",
+                  "value": "DESC",
+                  "description": "(optional) ASC | DESC",
+                  "disabled": true
+                },
+                {
+                  "key": "lang",
+                  "value": "en",
+                  "description": "(optional) Language for localized text",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Inbox of the calling agent/sub-agent/admin (employee JWT). senderType enum: SYSTEM | ADMIN | AGENT | SUBAGENT | USER; sortBy whitelisted to createdAt | updatedAt | readAt.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "My unread count",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-notification/me/unread-count",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-notification",
+                "me",
+                "unread-count"
+              ]
+            },
+            "description": "Unread notification count for the calling employee (agent/sub-agent/admin).\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "My unread counts by sender role",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-notification/me/unread-by-role",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-notification",
+                "me",
+                "unread-by-role"
+              ]
+            },
+            "description": "Unread counts split by sender role — powers the admin inbox filter tabs (All / Users / Agents / System).\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Mark agent notifications read",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-notification/mark-read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-notification",
+                "mark-read"
+              ]
+            },
+            "description": "Marks the listed notification ids as read for the calling employee.\n\n**Auth:** Bearer JWT (admin/employee token from admin login).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notificationIds\": [\n    \"3f0c9d2e-7b1a-4c5d-9e8f-123456789abc\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Mark all agent notifications read",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-notification/mark-all-read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-notification",
+                "mark-all-read"
+              ]
+            },
+            "description": "Marks every notification of the calling employee as read.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete agent notification",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/agent-notification/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "agent-notification",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "3f0c9d2e-7b1a-4c5d-9e8f-123456789abc",
+                  "description": "Notification UUID"
+                }
+              ]
+            },
+            "description": "Deletes one notification belonging to the calling employee.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `agent-notification`."
+    },
+    {
+      "name": "Platform Fees",
+      "item": [
+        {
+          "name": "Active platform fees",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/platform-fees/active",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "platform-fees",
+                "active"
+              ]
+            },
+            "description": "Active platform fees with reasons — agent/sub-agent transparency view (still behind the employee JWT guard).\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `platform-fee`."
+    },
+    {
+      "name": "Transactions",
+      "item": [
+        {
+          "name": "List my transactions (employee/agent)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/transactions/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "transactions",
+                "me"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "(optional)",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "(optional)",
+                  "disabled": true
+                },
+                {
+                  "key": "type",
+                  "value": "CREDIT",
+                  "description": "(optional)",
+                  "disabled": true
+                },
+                {
+                  "key": "source",
+                  "value": "TRANSFER",
+                  "description": "(optional)",
+                  "disabled": true
+                },
+                {
+                  "key": "fromDate",
+                  "value": "2026-01-01",
+                  "description": "(optional)",
+                  "disabled": true
+                },
+                {
+                  "key": "toDate",
+                  "value": "2026-12-31",
+                  "description": "(optional)",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "List the logged-in employee/agent's own transactions. Guard: AuthGuard('employee-jwt'). Used by agents to see their own ledger.\n\n**Auth:** Bearer JWT (admin/employee token from admin login)."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints from module `transactions`."
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000/api/v1",
+      "type": "string"
+    }
+  ]
+}

@@ -1,0 +1,227 @@
+name: API Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Run tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create environment file
+        run: |
+          cat << EOF > .env
+          NODE_ENV=ci
+          BASE_URL=${{ secrets.BASE_URL }}
+          ADMIN_API_URL=${{ secrets.ADMIN_API_URL }}
+          PLAYER_API_URL=${{ secrets.PLAYER_API_URL }}
+          AGENT_API_URL=${{ secrets.AGENT_API_URL }}
+          ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
+          PLAYER_EMAIL=${{ secrets.PLAYER_EMAIL }}
+          PLAYER_PASSWORD=${{ secrets.PLAYER_PASSWORD }}
+          AGENT_EMAIL=${{ secrets.AGENT_EMAIL }}
+          AGENT_PASSWORD=${{ secrets.AGENT_PASSWORD }}
+          TEST_TIMEOUT=60000
+          API_TIMEOUT=30000
+          RETRY_COUNT=3
+          LOG_LEVEL=info
+          LOG_TO_FILE=true
+          USE_REAL_DATA=false
+          CLEANUP_TEST_DATA=true
+          EOF
+
+      - name: Run linter
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Run type checking
+        run: npm run type-check
+
+      - name: Run smoke tests
+        run: npm test -- --grep @smoke
+        continue-on-error: false
+
+      - name: Run all tests
+        run: npm test
+        continue-on-error: true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-node-${{ matrix.node-version }}
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 30
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-node-${{ matrix.node-version }}
+          path: logs/
+          retention-days: 7
+
+      - name: Generate Allure Report
+        if: always()
+        run: |
+          npm install -g allure-commandline
+          allure generate allure-results -o allure-report --clean
+        continue-on-error: true
+
+      - name: Upload Allure Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report-node-${{ matrix.node-version }}
+          path: allure-report/
+          retention-days: 30
+
+      - name: Publish test report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Test Results - Node ${{ matrix.node-version }}
+          path: test-results/junit.xml
+          reporter: java-junit
+          fail-on-error: false
+
+  test-suites:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [admin, player, agent]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create environment file
+        run: |
+          cat << EOF > .env
+          NODE_ENV=ci
+          BASE_URL=${{ secrets.BASE_URL }}
+          ADMIN_API_URL=${{ secrets.ADMIN_API_URL }}
+          PLAYER_API_URL=${{ secrets.PLAYER_API_URL }}
+          AGENT_API_URL=${{ secrets.AGENT_API_URL }}
+          ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
+          PLAYER_EMAIL=${{ secrets.PLAYER_EMAIL }}
+          PLAYER_PASSWORD=${{ secrets.PLAYER_PASSWORD }}
+          AGENT_EMAIL=${{ secrets.AGENT_EMAIL }}
+          AGENT_PASSWORD=${{ secrets.AGENT_PASSWORD }}
+          TEST_TIMEOUT=60000
+          API_TIMEOUT=30000
+          RETRY_COUNT=3
+          LOG_LEVEL=info
+          LOG_TO_FILE=true
+          USE_REAL_DATA=false
+          CLEANUP_TEST_DATA=true
+          EOF
+
+      - name: Run ${{ matrix.suite }} tests
+        run: npm run test:${{ matrix.suite }}
+        continue-on-error: true
+
+      - name: Upload test results for ${{ matrix.suite }}
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.suite }}
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 30
+
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create environment file
+        run: |
+          cat << EOF > .env
+          NODE_ENV=ci
+          BASE_URL=${{ secrets.BASE_URL }}
+          ADMIN_API_URL=${{ secrets.ADMIN_API_URL }}
+          PLAYER_API_URL=${{ secrets.PLAYER_API_URL }}
+          AGENT_API_URL=${{ secrets.AGENT_API_URL }}
+          ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
+          PLAYER_EMAIL=${{ secrets.PLAYER_EMAIL }}
+          PLAYER_PASSWORD=${{ secrets.PLAYER_PASSWORD }}
+          AGENT_EMAIL=${{ secrets.AGENT_EMAIL }}
+          AGENT_PASSWORD=${{ secrets.AGENT_PASSWORD }}
+          TEST_TIMEOUT=60000
+          API_TIMEOUT=30000
+          RETRY_COUNT=3
+          LOG_LEVEL=info
+          LOG_TO_FILE=true
+          USE_REAL_DATA=false
+          CLEANUP_TEST_DATA=true
+          EOF
+
+      - name: Run regression tests
+        run: npm run test:regression
+
+      - name: Upload regression results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 30
