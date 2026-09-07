@@ -6,36 +6,92 @@ on:
   pull_request:
     branches: [main, develop]
   schedule:
-    # Run tests daily at 2 AM UTC
+    # Full suite daily at 2 AM UTC
     - cron: '0 2 * * *'
   workflow_dispatch:
+    inputs:
+      scope:
+        description: Which tests to run
+        type: choice
+        options: [smoke, full]
+        default: smoke
+
+# The staging accounts are shared with developers running tests locally.
+# Login is throttled at 5 requests/min per IP, the player plan allows only two
+# concurrent devices, and a player logout revokes every session of that account.
+# Two runs at the same time evict each other, so queue them instead.
+concurrency:
+  group: api-tests-staging
+  cancel-in-progress: false
 
 jobs:
-  test:
+  # Lint and type-check touch no API, so they are safe to run in parallel
+  # across Node versions.
+  static:
+    name: Lint and type-check (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         node-version: [18.x, 20.x]
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Type check
+        run: npm run type-check
+
+  # A single test job: the suite talks to one shared environment, so running
+  # several jobs at once produces 401s and 429s rather than real results.
+  tests:
+    name: API tests
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Check required secrets are set
+        env:
+          ADMIN_API_URL: ${{ secrets.ADMIN_API_URL }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          PLAYER_EMAIL: ${{ secrets.PLAYER_EMAIL }}
+          PLAYER_PASSWORD: ${{ secrets.PLAYER_PASSWORD }}
+          AGENT_EMAIL: ${{ secrets.AGENT_EMAIL }}
+          AGENT_PASSWORD: ${{ secrets.AGENT_PASSWORD }}
+        run: |
+          missing=""
+          for name in ADMIN_API_URL ADMIN_EMAIL ADMIN_PASSWORD PLAYER_EMAIL PLAYER_PASSWORD AGENT_EMAIL AGENT_PASSWORD; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing"
+            echo "Add them under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
 
       - name: Create environment file
         run: |
-          cat << EOF > .env
+          cat << 'EOF' > .env
           NODE_ENV=ci
           BASE_URL=${{ secrets.BASE_URL }}
           ADMIN_API_URL=${{ secrets.ADMIN_API_URL }}
@@ -47,7 +103,7 @@ jobs:
           PLAYER_PASSWORD=${{ secrets.PLAYER_PASSWORD }}
           AGENT_EMAIL=${{ secrets.AGENT_EMAIL }}
           AGENT_PASSWORD=${{ secrets.AGENT_PASSWORD }}
-          TEST_TIMEOUT=60000
+          TEST_TIMEOUT=120000
           API_TIMEOUT=30000
           RETRY_COUNT=3
           LOG_LEVEL=info
@@ -56,172 +112,31 @@ jobs:
           CLEANUP_TEST_DATA=true
           EOF
 
-      - name: Run linter
-        run: npm run lint
-        continue-on-error: true
-
-      - name: Run type checking
-        run: npm run type-check
-
+      # Push and pull request run the fast smoke set; the nightly schedule and
+      # a manual "full" dispatch run everything.
       - name: Run smoke tests
-        run: npm test -- --grep @smoke
-        continue-on-error: false
+        if: github.event_name == 'push' || github.event_name == 'pull_request' || inputs.scope == 'smoke'
+        run: npm run test:smoke
 
-      - name: Run all tests
+      - name: Run full suite
+        if: github.event_name == 'schedule' || inputs.scope == 'full'
         run: npm test
-        continue-on-error: true
 
-      - name: Upload test results
+      - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-node-${{ matrix.node-version }}
+          name: playwright-report
           path: |
-            test-results/
             playwright-report/
+            test-results/
+            allure-results/
           retention-days: 30
 
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: logs-node-${{ matrix.node-version }}
+          name: logs
           path: logs/
           retention-days: 7
-
-      - name: Generate Allure Report
-        if: always()
-        run: |
-          npm install -g allure-commandline
-          allure generate allure-results -o allure-report --clean
-        continue-on-error: true
-
-      - name: Upload Allure Report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: allure-report-node-${{ matrix.node-version }}
-          path: allure-report/
-          retention-days: 30
-
-      - name: Publish test report
-        if: always()
-        uses: dorny/test-reporter@v1
-        with:
-          name: Test Results - Node ${{ matrix.node-version }}
-          path: test-results/junit.xml
-          reporter: java-junit
-          fail-on-error: false
-
-  test-suites:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    strategy:
-      fail-fast: false
-      matrix:
-        suite: [admin, player, agent]
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Create environment file
-        run: |
-          cat << EOF > .env
-          NODE_ENV=ci
-          BASE_URL=${{ secrets.BASE_URL }}
-          ADMIN_API_URL=${{ secrets.ADMIN_API_URL }}
-          PLAYER_API_URL=${{ secrets.PLAYER_API_URL }}
-          AGENT_API_URL=${{ secrets.AGENT_API_URL }}
-          ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
-          ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
-          PLAYER_EMAIL=${{ secrets.PLAYER_EMAIL }}
-          PLAYER_PASSWORD=${{ secrets.PLAYER_PASSWORD }}
-          AGENT_EMAIL=${{ secrets.AGENT_EMAIL }}
-          AGENT_PASSWORD=${{ secrets.AGENT_PASSWORD }}
-          TEST_TIMEOUT=60000
-          API_TIMEOUT=30000
-          RETRY_COUNT=3
-          LOG_LEVEL=info
-          LOG_TO_FILE=true
-          USE_REAL_DATA=false
-          CLEANUP_TEST_DATA=true
-          EOF
-
-      - name: Run ${{ matrix.suite }} tests
-        run: npm run test:${{ matrix.suite }}
-        continue-on-error: true
-
-      - name: Upload test results for ${{ matrix.suite }}
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-${{ matrix.suite }}
-          path: |
-            test-results/
-            playwright-report/
-          retention-days: 30
-
-  regression:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    if: github.event_name == 'push' || github.event_name == 'schedule'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Create environment file
-        run: |
-          cat << EOF > .env
-          NODE_ENV=ci
-          BASE_URL=${{ secrets.BASE_URL }}
-          ADMIN_API_URL=${{ secrets.ADMIN_API_URL }}
-          PLAYER_API_URL=${{ secrets.PLAYER_API_URL }}
-          AGENT_API_URL=${{ secrets.AGENT_API_URL }}
-          ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
-          ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
-          PLAYER_EMAIL=${{ secrets.PLAYER_EMAIL }}
-          PLAYER_PASSWORD=${{ secrets.PLAYER_PASSWORD }}
-          AGENT_EMAIL=${{ secrets.AGENT_EMAIL }}
-          AGENT_PASSWORD=${{ secrets.AGENT_PASSWORD }}
-          TEST_TIMEOUT=60000
-          API_TIMEOUT=30000
-          RETRY_COUNT=3
-          LOG_LEVEL=info
-          LOG_TO_FILE=true
-          USE_REAL_DATA=false
-          CLEANUP_TEST_DATA=true
-          EOF
-
-      - name: Run regression tests
-        run: npm run test:regression
-
-      - name: Upload regression results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: regression-results
-          path: |
-            test-results/
-            playwright-report/
-          retention-days: 30

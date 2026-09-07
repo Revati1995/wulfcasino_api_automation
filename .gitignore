@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
-package-lock.json
+# package-lock.json must stay committed: `npm ci` and actions/setup-node's npm
+# cache both require a lock file, and CI fails without it.
 yarn.lock
 pnpm-lock.yaml
 
