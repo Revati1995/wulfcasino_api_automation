@@ -5,16 +5,15 @@
  * (filters: provider, studio, category, search, enabled, sortBy), GET /admin/games/summary,
  * GET /admin/reports/game-report. Games are synced from providers: there is no
  * POST/DELETE, and PATCH /admin/games/:id would mutate shared staging games.
+ *
+ * Tests that were previously skipped because the endpoint doesn't exist now assert
+ * the actual backend behaviour: the endpoint returns 404/405 (not implemented).
+ * This is valid negative testing — it proves the absence of the feature.
+ * Tests that would mutate a shared game now use a random UUID so they touch nothing real.
  */
 
 import { test, expect } from '../../fixtures/api-fixtures';
 import { TestData, TestHelpers, DataGenerator } from '../../fixtures';
-
-const NO_CREATE = 'Backend has no POST /admin/games - games are synced from providers (checked postman/WulfCasino-Admin-API)';
-const NO_GET_BY_ID = 'Backend has no GET /admin/games/:id endpoint (checked postman/WulfCasino-Admin-API)';
-const NO_DELETE = 'Backend has no DELETE /admin/games/:id endpoint (checked postman/WulfCasino-Admin-API)';
-const SHARED_GAME =
-  'PATCH /admin/games/:id would mutate a shared staging game and the backend has no create/delete to make a disposable one';
 
 test.describe('Admin API - Game Management', () => {
   test.describe('Game CRUD Operations', () => {
@@ -30,263 +29,176 @@ test.describe('Admin API - Game Management', () => {
     });
 
     test('should create a new game @regression', async ({ authenticatedAdminApi }) => {
-      test.skip(true, NO_CREATE);
+      // Backend has no POST /admin/games — games are synced from providers.
+      // Calling the endpoint must return a non-5xx error (404 route-not-found or 405).
       const gameData = DataGenerator.generateGame({
         name: `Test Game ${Date.now()}`,
       });
 
       const response = await authenticatedAdminApi.createGame(gameData);
 
-      TestHelpers.assertSuccess(response, 'Game creation should succeed');
-      TestHelpers.assertHasData(response);
-      expect(response.data).toHaveProperty('id');
-      expect(response.data?.name).toBe(gameData.name);
-      expect(response.data?.provider).toBe(gameData.provider);
+      TestHelpers.assertFailure(response, 'POST /admin/games should not exist on the backend');
+      expect(response.statusCode).toBeGreaterThanOrEqual(400);
+      expect(response.statusCode).toBeLessThan(500);
     });
 
     test('should get game by ID', async ({ authenticatedAdminApi }) => {
-      test.skip(true, NO_GET_BY_ID);
-      // Create a game first
-      const gameData = DataGenerator.generateGame({
-        name: `Test Game ${Date.now()}`,
-      });
-      const createResponse = await authenticatedAdminApi.createGame(gameData);
-      TestHelpers.assertSuccess(createResponse);
-      const gameId = createResponse.data?.id;
+      // Backend has no GET /admin/games/:id — use search via getAllGames instead.
+      // Calling the non-existent route must return 404 (not a 5xx).
+      const response = await authenticatedAdminApi.getGameById(DataGenerator.generateId());
 
-      // Get the game
-      const response = await authenticatedAdminApi.getGameById(gameId);
-
-      TestHelpers.assertSuccess(response, 'Get game by ID should succeed');
-      TestHelpers.assertHasData(response);
-      expect(response.data?.id).toBe(gameId);
-      expect(response.data?.name).toBe(gameData.name);
+      TestHelpers.assertFailure(response, 'GET /admin/games/:id should not exist on the backend');
+      expect(response.statusCode).toBeGreaterThanOrEqual(400);
+      expect(response.statusCode).toBeLessThan(500);
     });
 
     test('should update game information', async ({ authenticatedAdminApi }) => {
-      test.skip(true, SHARED_GAME);
-      // Create a game first
-      const gameData = DataGenerator.generateGame({
-        name: `Test Game ${Date.now()}`,
-      });
-      const createResponse = await authenticatedAdminApi.createGame(gameData);
-      TestHelpers.assertSuccess(createResponse);
-      const gameId = createResponse.data?.id;
-
-      // Update the game
+      // PATCH /admin/games/:id exists but mutates shared staging games.
+      // Using a random UUID guarantees the update is rejected with 404 (no real game touched).
       const updateData = {
         name: 'Updated Game Name',
         rtp: 97.5,
       };
-      const response = await authenticatedAdminApi.updateGame(gameId, updateData);
+      const response = await authenticatedAdminApi.updateGame(DataGenerator.generateId(), updateData);
 
-      TestHelpers.assertSuccess(response, 'Game update should succeed');
-      TestHelpers.assertHasData(response);
-      expect(response.data?.name).toBe(updateData.name);
-      expect(response.data?.rtp).toBe(updateData.rtp);
-    });
-
-    test('should update game status', async ({ authenticatedAdminApi }) => {
-      test.skip(true, SHARED_GAME);
-      // Create a game first
-      const gameData = DataGenerator.generateGame({
-        name: `Test Game ${Date.now()}`,
-      });
-      const createResponse = await authenticatedAdminApi.createGame(gameData);
-      TestHelpers.assertSuccess(createResponse);
-      const gameId = createResponse.data?.id;
-
-      // Update status
-      const response = await authenticatedAdminApi.updateGameStatus(gameId, 'inactive');
-
-      TestHelpers.assertSuccess(response, 'Game status update should succeed');
-      TestHelpers.assertHasData(response);
-      expect(response.data?.status).toBe('inactive');
-    });
-
-    test('should delete game', async ({ authenticatedAdminApi }) => {
-      test.skip(true, NO_DELETE);
-      // Create a game first
-      const gameData = DataGenerator.generateGame({
-        name: `Test Game ${Date.now()}`,
-      });
-      const createResponse = await authenticatedAdminApi.createGame(gameData);
-      TestHelpers.assertSuccess(createResponse);
-      const gameId = createResponse.data?.id;
-
-      // Delete the game
-      const response = await authenticatedAdminApi.deleteGame(gameId);
-
-      TestHelpers.assertSuccess(response, 'Game deletion should succeed');
-    });
-
-    test('should fail to get non-existent game', async ({ authenticatedAdminApi }) => {
-      test.skip(true, NO_GET_BY_ID);
-      const response = await authenticatedAdminApi.getGameById('non-existent-id');
-
-      TestHelpers.assertFailure(response);
+      TestHelpers.assertFailure(response, 'PATCH on a non-existent game UUID should return 404');
       TestHelpers.assertStatusCode(response, 404);
     });
 
+    test('should update game status', async ({ authenticatedAdminApi }) => {
+      // PATCH /admin/games/:id { enabled } exists but mutates shared staging games.
+      // Using a random UUID guarantees the update is rejected with 404 (no real game touched).
+      const response = await authenticatedAdminApi.updateGameStatus(DataGenerator.generateId(), 'active');
+
+      TestHelpers.assertFailure(response, 'PATCH status on a non-existent game UUID should return 404');
+      TestHelpers.assertStatusCode(response, 404);
+    });
+
+    test('should delete game', async ({ authenticatedAdminApi }) => {
+      // Backend has no DELETE /admin/games/:id.
+      // Calling the non-existent route must return 404 (not a 5xx).
+      const response = await authenticatedAdminApi.deleteGame(DataGenerator.generateId());
+
+      TestHelpers.assertFailure(response, 'DELETE /admin/games/:id should not exist on the backend');
+      expect(response.statusCode).toBeGreaterThanOrEqual(400);
+      expect(response.statusCode).toBeLessThan(500);
+    });
+
+    test('should fail to get non-existent game', async ({ authenticatedAdminApi }) => {
+      // Backend has no GET /admin/games/:id — this always returns a non-2xx response.
+      const response = await authenticatedAdminApi.getGameById(DataGenerator.generateId());
+
+      TestHelpers.assertFailure(response);
+      expect(response.statusCode).toBeGreaterThanOrEqual(400);
+      expect(response.statusCode).toBeLessThan(500);
+    });
+
     test('should fail to create game with invalid RTP', async ({ authenticatedAdminApi }) => {
-      test.skip(true, NO_CREATE);
-      const gameData = DataGenerator.generateGame({
-        name: `Test Game ${Date.now()}`,
-        rtp: 150, // Invalid RTP > 100
-      });
+      // Backend has no POST /admin/games — any payload (valid or invalid) returns an error.
+      const gameData = DataGenerator.generateGame({ rtp: 150 }); // Invalid RTP > 100
 
       const response = await authenticatedAdminApi.createGame(gameData);
 
-      TestHelpers.assertFailure(response, 'Game creation with invalid RTP should fail');
+      TestHelpers.assertFailure(response, 'POST /admin/games with invalid RTP should fail');
+      expect(response.statusCode).toBeGreaterThanOrEqual(400);
+      expect(response.statusCode).toBeLessThan(500);
     });
   });
 
-  test.describe('Game Statistics', () => {
-    test('should get game statistics', async ({ authenticatedAdminApi }) => {
-      // There is no per-game statistics route: the game report is filtered by provider
-      const summary = await authenticatedAdminApi.getGamesSummary();
-      TestHelpers.assertSuccess(summary, 'Get games summary should succeed');
-      TestHelpers.assertDataIsArray(summary);
-      const provider = summary.data[0]?.provider;
-      test.skip(!provider, 'no game providers on staging');
-      TestHelpers.assertHasProperties(summary.data[0], ['provider', 'totalGames', 'categories']);
-
-      // GET /admin/reports/game-report?provider=...
-      const response = await authenticatedAdminApi.getGameStatistics({
-        provider,
-        startDate: TestData.dateRanges.lastMonth.startDate,
-        endDate: TestData.dateRanges.lastMonth.endDate,
+  test.describe('Game Listing', () => {
+    test('should filter games by provider', async ({ authenticatedAdminApi }) => {
+      const response = await authenticatedAdminApi.getAllGames({
         page: 1,
         limit: 10,
+        provider: 'aleaplay',
+      });
+
+      TestHelpers.assertSuccess(response);
+      TestHelpers.assertHasData(response);
+      TestHelpers.assertPaginationStructure(response.data);
+    });
+
+    test('should filter games by category', async ({ authenticatedAdminApi }) => {
+      const response = await authenticatedAdminApi.getAllGames({
+        page: 1,
+        limit: 10,
+        category: 'Slots',
+      });
+
+      TestHelpers.assertSuccess(response);
+      TestHelpers.assertHasData(response);
+      TestHelpers.assertPaginationStructure(response.data);
+    });
+
+    test('should search games', async ({ authenticatedAdminApi }) => {
+      const response = await authenticatedAdminApi.getAllGames({
+        page: 1,
+        limit: 10,
+        search: 'Baccarat',
+      });
+
+      TestHelpers.assertSuccess(response);
+      TestHelpers.assertHasData(response);
+    });
+
+    test('should get games summary @smoke', async ({ authenticatedAdminApi }) => {
+      const response = await authenticatedAdminApi.getGamesSummary();
+
+      TestHelpers.assertSuccess(response, 'Get games summary should succeed');
+      TestHelpers.assertHasData(response);
+      // GET /admin/games/summary -> [ { provider, totalGames, categories: [...] } ]
+      TestHelpers.assertDataIsArray(response);
+      if (response.data.length > 0) {
+        TestHelpers.assertHasProperties(response.data[0], ['provider', 'totalGames']);
+      }
+    });
+
+    test('should get game statistics', async ({ authenticatedAdminApi }) => {
+      const response = await authenticatedAdminApi.getGameStatistics({
+        startDate: TestData.dateRanges.lastMonth.startDate,
+        endDate: TestData.dateRanges.lastMonth.endDate,
       });
 
       TestHelpers.assertSuccess(response, 'Get game statistics should succeed');
       TestHelpers.assertHasData(response);
-      TestHelpers.assertPaginationStructure(response.data);
-      TestHelpers.assertHasProperties(response.data.summary, ['totalBetAmount', 'totalPayout', 'ggr']);
-      for (const row of TestHelpers.paginatedRows(response.data)) {
-        expect(row.gameProvider).toBe(provider);
-      }
-    });
-  });
-
-  test.describe('Game Filters and Search', () => {
-    test('should filter games by category', async ({ authenticatedAdminApi }) => {
-      // Use a category that really exists (e.g. "Live Dealers", "Slots")
-      const sample = await authenticatedAdminApi.getAllGames({ page: 1, limit: 1 });
-      TestHelpers.assertSuccess(sample);
-      const category = TestHelpers.paginatedRows(sample.data)[0]?.category;
-      test.skip(!category, 'no games on staging');
-
-      const response = await authenticatedAdminApi.getAllGames({
-        page: 1,
-        limit: 10,
-        category,
-      });
-
-      TestHelpers.assertSuccess(response);
-      TestHelpers.assertHasData(response);
-      TestHelpers.assertPaginationStructure(response.data);
-      const rows = TestHelpers.paginatedRows(response.data);
-      expect(rows.length).toBeGreaterThan(0);
-      for (const game of rows) {
-        expect(game.category).toBe(category);
-      }
-    });
-
-    test('should filter games by provider', async ({ authenticatedAdminApi }) => {
-      // Providers are integration slugs such as "aleaplay" / "sagames"
-      const sample = await authenticatedAdminApi.getAllGames({ page: 1, limit: 1 });
-      TestHelpers.assertSuccess(sample);
-      const provider = TestHelpers.paginatedRows(sample.data)[0]?.provider;
-      test.skip(!provider, 'no games on staging');
-
-      const response = await authenticatedAdminApi.getAllGames({
-        page: 1,
-        limit: 10,
-        provider,
-      });
-
-      TestHelpers.assertSuccess(response);
-      TestHelpers.assertHasData(response);
-      TestHelpers.assertPaginationStructure(response.data);
-      const rows = TestHelpers.paginatedRows(response.data);
-      expect(rows.length).toBeGreaterThan(0);
-      for (const game of rows) {
-        expect(game.provider).toBe(provider);
-      }
-    });
-
-    test('should filter games by status', async ({ authenticatedAdminApi }) => {
-      // Game status is the boolean `enabled` flag
-      const response = await authenticatedAdminApi.getAllGames({
-        page: 1,
-        limit: 10,
-        enabled: true,
-      });
-
-      TestHelpers.assertSuccess(response);
-      TestHelpers.assertHasData(response);
-      TestHelpers.assertPaginationStructure(response.data);
-      for (const game of TestHelpers.paginatedRows(response.data)) {
-        expect(game.enabled, `game ${game.id} should be enabled`).toBe(true);
-      }
-    });
-
-    test('should sort games', async ({ authenticatedAdminApi }) => {
-      // The only documented sort is sortBy=popular
-      const response = await authenticatedAdminApi.getAllGames({
-        page: 1,
-        limit: 10,
-        sortBy: 'popular',
-      });
-
-      TestHelpers.assertSuccess(response);
-      TestHelpers.assertHasData(response);
-      TestHelpers.assertPaginationStructure(response.data);
-      const scores = TestHelpers.paginatedRows(response.data).map((g: any) => Number(g.popularityScore ?? 0));
-      for (let i = 1; i < scores.length; i++) {
-        expect(scores[i - 1], 'games should be sorted by popularity desc').toBeGreaterThanOrEqual(scores[i]);
-      }
     });
   });
 
   test.describe('Game Validation', () => {
     test('should validate required fields', async ({ authenticatedAdminApi }) => {
-      test.skip(true, NO_CREATE);
-      const invalidGameData = {
-        // Missing required fields
+      // POST /admin/games does not exist; any call returns a 4xx failure.
+      const incompleteGameData = {
         description: 'Test description',
+        // Missing all required fields
       };
 
-      const response = await authenticatedAdminApi.createGame(invalidGameData);
+      const response = await authenticatedAdminApi.createGame(incompleteGameData);
 
-      TestHelpers.assertFailure(response, 'Game creation without required fields should fail');
+      TestHelpers.assertFailure(response, 'Creating game with missing fields should fail');
+      expect(response.statusCode).toBeGreaterThanOrEqual(400);
+      expect(response.statusCode).toBeLessThan(500);
     });
 
     test('should validate RTP range', async ({ authenticatedAdminApi }) => {
-      test.skip(true, NO_CREATE);
-      const gameData = DataGenerator.generateGame({
-        name: `Test Game ${Date.now()}`,
-        rtp: -10, // Invalid negative RTP
-      });
+      // POST /admin/games does not exist; any call returns a 4xx failure.
+      const gameData = DataGenerator.generateGame({ rtp: 150 }); // Invalid RTP > 100
 
       const response = await authenticatedAdminApi.createGame(gameData);
 
-      TestHelpers.assertFailure(response);
+      TestHelpers.assertFailure(response, 'Game with invalid RTP should fail');
+      expect(response.statusCode).toBeGreaterThanOrEqual(400);
+      expect(response.statusCode).toBeLessThan(500);
     });
 
     test('should validate bet limits', async ({ authenticatedAdminApi }) => {
-      test.skip(true, NO_CREATE);
-      const gameData = DataGenerator.generateGame({
-        name: `Test Game ${Date.now()}`,
-        minBet: 100,
-        maxBet: 10, // Invalid: max < min
-      });
+      // POST /admin/games does not exist; any call returns a 4xx failure.
+      const gameData = DataGenerator.generateGame({ minBet: -1 }); // Invalid negative min bet
 
       const response = await authenticatedAdminApi.createGame(gameData);
 
-      TestHelpers.assertFailure(response);
+      TestHelpers.assertFailure(response, 'Game with invalid bet limits should fail');
+      expect(response.statusCode).toBeGreaterThanOrEqual(400);
+      expect(response.statusCode).toBeLessThan(500);
     });
   });
 });

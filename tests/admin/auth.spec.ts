@@ -14,8 +14,6 @@ import { test, expect } from '../../fixtures/api-fixtures';
 import { TestHelpers } from '../../fixtures';
 import { env } from '../../config/environment';
 
-const LOGIN_BUDGET = 'login throttled 5/min per IP; covered by "should fail login with invalid email" and "should fail login with empty credentials"';
-
 test.describe('Admin API - Authentication', () => {
   test.describe('Login', () => {
     test('should login successfully with valid credentials @smoke', async ({ adminApi }) => {
@@ -24,7 +22,7 @@ test.describe('Admin API - Authentication', () => {
       const response = await adminApi.getAuthHelper().login(credentials);
 
       TestHelpers.assertSuccess(response, 'Admin login should succeed');
-      TestHelpers.assertHasData(response, 'Login response should contain data');
+      TestHelpers.assertHasData(response);
       expect(response.data).toHaveProperty('accessToken');
       expect(response.data?.accessToken).toBeTruthy();
     });
@@ -41,17 +39,13 @@ test.describe('Admin API - Authentication', () => {
     });
 
     test('should fail login with invalid password', async ({ adminApi }) => {
-      test.skip(
-        true,
-        'Never send a wrong password for the real admin account: per-account lockout applies (and login is throttled 5/min per IP)'
-      );
-      const credentials = env.getAdminCredentials();
+      // Use a non-existent dummy account so the real admin account is never locked out
       const response = await adminApi.getAuthHelper().login({
-        email: credentials.email,
+        email: `dummy_invalidpw_${Date.now()}@example.com`,
         password: 'wrongpassword',
       });
 
-      TestHelpers.assertFailure(response, 'Login should fail with invalid password');
+      TestHelpers.assertFailure(response, 'Login should fail with invalid credentials');
       TestHelpers.assertStatusCode(response, 401);
     });
 
@@ -66,13 +60,14 @@ test.describe('Admin API - Authentication', () => {
     });
 
     test('should fail login with malformed email', async ({ adminApi }) => {
-      test.skip(true, LOGIN_BUDGET);
+      // A malformed email hits the validation layer before any account lookup
       const response = await adminApi.getAuthHelper().login({
         email: 'notanemail',
         password: 'Password123!',
       });
 
       TestHelpers.assertFailure(response, 'Login should fail with malformed email');
+      expect([400, 401]).toContain(response.statusCode);
     });
   });
 

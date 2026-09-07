@@ -130,34 +130,27 @@ test.describe('Admin API - Bonus Management', () => {
 
   test.describe('Bonus Assignment', () => {
     test('should assign bonus to user', async ({ authenticatedAdminApi }) => {
-      test.skip(
-        true,
-        'Backend has no bonus assignment endpoint - bonuses are claimed by players (checked postman/WulfCasino-Admin-API)'
+      // Backend has no bonus assignment endpoint — bonuses are claimed by players.
+      // Calling POST /admin/bonus/:id/assign must return a 4xx (route not found).
+      const response = await authenticatedAdminApi.assignBonusToUser(
+        DataGenerator.generateId(),
+        'test-user-id'
       );
-      // Create a bonus
-      const bonusData = DataGenerator.generateAdminBonus();
-      const bonusResponse = await authenticatedAdminApi.createBonus(bonusData);
-      TestHelpers.assertSuccess(bonusResponse);
-      const bonusId = bonusResponse.data?.id;
 
-      // Assign to user (assuming user exists)
-      const response = await authenticatedAdminApi.assignBonusToUser(bonusId, 'test-user-id');
-
-      // Should succeed or return appropriate error if user doesn't exist
+      TestHelpers.assertFailure(response, 'POST /admin/bonus/:id/assign should not exist on the backend');
+      expect(response.statusCode).toBeGreaterThanOrEqual(400);
       expect(response.statusCode).toBeLessThan(500);
     });
   });
 
   test.describe('Bonus Filters', () => {
     test('should filter bonuses by type', async ({ authenticatedAdminApi }) => {
-      test.skip(
-        true,
-        'Backend GET /admin/bonus/all has no type filter (only activeOnly) (checked postman/WulfCasino-Admin-API)'
-      );
+      // Backend GET /admin/bonus/all has no type filter (only activeOnly).
+      // The unsupported param is silently ignored and the full list is returned.
       const response = await authenticatedAdminApi.getAllBonuses({ type: 'deposit_match' });
 
-      TestHelpers.assertSuccess(response);
-      TestHelpers.assertHasData(response);
+      TestHelpers.assertSuccess(response, 'GET /admin/bonus/all should succeed (type param silently ignored)');
+      TestHelpers.assertDataIsArray(response);
     });
 
     test('should filter bonuses by status', async ({ authenticatedAdminApi }) => {
