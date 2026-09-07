@@ -10,31 +10,53 @@ import { logger } from './logger';
 export class AuthHelper {
   private apiClient: ApiClient;
   private currentTokens?: AuthTokens;
+  private basePath: string;
 
-  constructor(apiClient: ApiClient) {
+  constructor(apiClient: ApiClient, basePath: string = '/api/v1') {
     this.apiClient = apiClient;
+    this.basePath = basePath;
   }
 
   /**
    * Login with credentials
    */
-  async login(credentials: LoginCredentials): Promise<ApiResponse<AuthTokens>> {
+  async login(credentials: LoginCredentials, emailFieldName: string = 'email'): Promise<ApiResponse<AuthTokens>> {
     logger.info(`Attempting login for: ${credentials.email}`);
 
-    const response = await this.apiClient.post<AuthTokens>(
-      '/auth/login',
-      credentials,
+    const loginData = emailFieldName === 'email' 
+      ? { email: credentials.email, password: credentials.password }
+      : { [emailFieldName]: credentials.email, password: credentials.password };
+
+    const response = await this.apiClient.post<any>(
+      `${this.basePath}/auth/login`,
+      loginData,
       { requiresAuth: false }
     );
 
     if (response.success && response.data) {
-      this.currentTokens = response.data;
-      this.apiClient.setAuthToken(response.data.accessToken);
-      logger.info(`Login successful for: ${credentials.email}`);
-    } else {
-      logger.error(`Login failed for: ${credentials.email}`, response.error);
+      // Handle both token formats: { token: "..." } or { accessToken: "..." }
+      const accessToken = response.data.token || response.data.accessToken;
+      const refreshToken = response.data.refreshToken;
+      
+      if (accessToken) {
+        this.currentTokens = {
+          accessToken,
+          refreshToken,
+        };
+        this.apiClient.setAuthToken(accessToken);
+        logger.info(`Login successful for: ${credentials.email}`);
+        
+        // Return normalized format
+        return {
+          success: true,
+          data: this.currentTokens,
+          statusCode: response.statusCode,
+          message: response.message,
+        };
+      }
     }
-
+    
+    logger.error(`Login failed for: ${credentials.email}`, response.error);
     return response;
   }
 

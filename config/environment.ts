@@ -3,9 +3,22 @@
  */
 
 import * as dotenv from 'dotenv';
+import * as path from 'path';
 
-// Load environment variables
-dotenv.config();
+// Load environment variables - look for .env in current directory first, then parent
+const envPath = path.resolve(__dirname, '../.env');
+const parentEnvPath = path.resolve(__dirname, '../../.env');
+
+// Try loading from current directory first
+let result = dotenv.config({ path: envPath });
+// If not found, try parent directory
+if (result.error) {
+  result = dotenv.config({ path: parentEnvPath });
+}
+// If still not found, use default dotenv.config() which checks process.cwd()
+if (result.error) {
+  dotenv.config();
+}
 
 export interface EnvironmentConfig {
   nodeEnv: string;

@@ -76,7 +76,7 @@ test.describe('Player API - Authentication', () => {
     test('should login successfully with valid credentials @smoke', async ({ playerApi }) => {
       const credentials = env.getPlayerCredentials();
 
-      const response = await playerApi.getAuthHelper().login(credentials);
+      const response = await playerApi.getAuthHelper().login(credentials, 'entity');
 
       TestHelpers.assertSuccess(response, 'Player login should succeed');
       TestHelpers.assertHasData(response);
@@ -88,7 +88,7 @@ test.describe('Player API - Authentication', () => {
       const response = await playerApi.getAuthHelper().login({
         email: 'nonexistent@test.com',
         password: 'SomePassword123!',
-      });
+      }, 'entity');
 
       TestHelpers.assertFailure(response);
       TestHelpers.assertStatusCode(response, 401);

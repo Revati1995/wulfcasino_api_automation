@@ -17,8 +17,8 @@ export default defineConfig({
   // Test execution settings
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  retries: process.env.CI ? 2 : 1, // Retry once on failure (helps with rate limiting)
+  workers: process.env.CI ? 1 : 2, // Limit to 2 parallel workers to avoid rate limiting
   
   // Reporter configuration
   reporter: [

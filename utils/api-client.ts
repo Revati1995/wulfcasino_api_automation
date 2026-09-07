@@ -127,7 +127,8 @@ export class ApiClient {
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        logApiRequest(method, url, body);
+        const fullUrl = `${this.baseURL}${url}`;
+        logApiRequest(method, fullUrl, body);
 
         const response = await context.fetch(url, {
           method,
@@ -139,7 +140,15 @@ export class ApiClient {
         const responseBody = await this.parseResponse(response);
         const statusCode = response.status();
 
-        logApiResponse(method, url, statusCode, responseBody);
+        logApiResponse(method, fullUrl, statusCode, responseBody);
+
+        // Handle rate limiting with retry
+        if (statusCode === 429 && attempt < retries) {
+          const rateLimitDelay = 5000; // Wait 5 seconds for rate limit
+          logger.warn(`Rate limited (429). Waiting ${rateLimitDelay}ms before retry ${attempt + 1}/${retries}`);
+          await this.sleep(rateLimitDelay);
+          continue; // Skip to next retry attempt
+        }
 
         return {
           success: response.ok(),
@@ -150,9 +159,14 @@ export class ApiClient {
         };
       } catch (error: any) {
         lastError = error;
-        logApiError(method, url, error);
+        logApiError(method, fullUrl, error);
 
-        if (attempt < retries) {
+        // If rate limited (429), wait longer
+        if (error.statusCode === 429 || (error.message && error.message.includes('Too Many Requests'))) {
+          const rateLimitDelay = 5000; // Wait 5 seconds for rate limit
+          logger.warn(`Rate limited. Waiting ${rateLimitDelay}ms before retry`);
+          await this.sleep(rateLimitDelay);
+        } else if (attempt < retries) {
           const delay = this.retryConfig.retryDelay || 1000;
           logger.warn(`Retry attempt ${attempt + 1}/${retries} after ${delay}ms`);
           await this.sleep(delay * (attempt + 1));

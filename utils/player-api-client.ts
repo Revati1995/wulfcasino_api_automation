@@ -11,6 +11,7 @@ import { ApiResponse, PaginationParams } from '../types';
 export class PlayerApiClient {
   private apiClient: ApiClient;
   private authHelper: AuthHelper;
+  private readonly basePath = '/api/v1';
 
   constructor() {
     this.apiClient = new ApiClient({
@@ -21,7 +22,7 @@ export class PlayerApiClient {
         retryDelay: 1000,
       },
     });
-    this.authHelper = new AuthHelper(this.apiClient);
+    this.authHelper = new AuthHelper(this.apiClient, this.basePath);
   }
 
   /**
@@ -39,66 +40,87 @@ export class PlayerApiClient {
   }
 
   /**
+   * Build full endpoint path
+   */
+  private endpoint(path: string): string {
+    return `${this.basePath}${path}`;
+  }
+
+  /**
    * Login as player
    */
   async loginAsPlayer(): Promise<void> {
     const credentials = env.getPlayerCredentials();
-    const response = await this.authHelper.login(credentials);
-    if (!response.success) {
-      throw new Error(`Player login failed: ${response.error}`);
+    // Player API uses "entity" instead of "email"
+    const response = await this.apiClient.post<any>(
+      this.endpoint('/auth/login'),
+      { entity: credentials.email, password: credentials.password },
+      { requiresAuth: false }
+    );
+    
+    if (response.success && response.data) {
+      const accessToken = response.data.token || response.data.accessToken;
+      const refreshToken = response.data.refreshToken;
+      
+      if (accessToken) {
+        this.authHelper.setTokens({ accessToken, refreshToken });
+        return;
+      }
     }
+    
+    throw new Error(`Player login failed: ${response.error}`);
   }
 
   // ==================== Profile Management ====================
 
   async getProfile(): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/profile');
+    return this.apiClient.get(this.endpoint('/profile'));
   }
 
   async updateProfile(profileData: any): Promise<ApiResponse<any>> {
-    return this.apiClient.put('/profile', profileData);
+    return this.apiClient.put(this.endpoint('/profile'), profileData);
   }
 
   async uploadAvatar(avatarData: any): Promise<ApiResponse<any>> {
-    return this.apiClient.post('/profile/avatar', avatarData);
+    return this.apiClient.post(this.endpoint('/profile/avatar'), avatarData);
   }
 
   async changePassword(oldPassword: string, newPassword: string): Promise<ApiResponse<void>> {
-    return this.apiClient.post('/profile/change-password', { oldPassword, newPassword });
+    return this.apiClient.post(this.endpoint('/profile/change-password'), { oldPassword, newPassword });
   }
 
   async enableTwoFactor(): Promise<ApiResponse<any>> {
-    return this.apiClient.post('/profile/2fa/enable');
+    return this.apiClient.post(this.endpoint('/profile/2fa/enable'));
   }
 
   async verifyTwoFactor(code: string): Promise<ApiResponse<any>> {
-    return this.apiClient.post('/profile/2fa/verify', { code });
+    return this.apiClient.post(this.endpoint('/profile/2fa/verify'), { code });
   }
 
   async disableTwoFactor(code: string): Promise<ApiResponse<void>> {
-    return this.apiClient.post('/profile/2fa/disable', { code });
+    return this.apiClient.post(this.endpoint('/profile/2fa/disable'), { code });
   }
 
   // ==================== Wallet Management ====================
 
   async getWallet(): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/wallet');
+    return this.apiClient.get(this.endpoint('/wallet'));
   }
 
   async getWalletBalance(): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/wallet/balance');
+    return this.apiClient.get(this.endpoint('/wallet/balance'));
   }
 
   async deposit(amount: number, paymentMethod: string, details?: any): Promise<ApiResponse<any>> {
-    return this.apiClient.post('/wallet/deposit', { amount, paymentMethod, ...details });
+    return this.apiClient.post(this.endpoint('/wallet/deposit'), { amount, paymentMethod, ...details });
   }
 
   async withdraw(amount: number, paymentMethod: string, details?: any): Promise<ApiResponse<any>> {
-    return this.apiClient.post('/wallet/withdraw', { amount, paymentMethod, ...details });
+    return this.apiClient.post(this.endpoint('/wallet/withdraw'), { amount, paymentMethod, ...details });
   }
 
   async getTransactionHistory(params?: PaginationParams): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/wallet/transactions', { params });
+    return this.apiClient.get(this.endpoint('/wallet/transactions'), { params });
   }
 
   async getTransactionById(transactionId: string): Promise<ApiResponse<any>> {
@@ -108,7 +130,7 @@ export class PlayerApiClient {
   // ==================== Game Management ====================
 
   async getAvailableGames(params?: any): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/games', { params });
+    return this.apiClient.get(this.endpoint('/games'), { params });
   }
 
   async getGameById(gameId: string): Promise<ApiResponse<any>> {
@@ -120,7 +142,7 @@ export class PlayerApiClient {
   }
 
   async getFavoriteGames(): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/games/favorites');
+    return this.apiClient.get(this.endpoint('/games/favorites'));
   }
 
   async addGameToFavorites(gameId: string): Promise<ApiResponse<any>> {
@@ -132,17 +154,17 @@ export class PlayerApiClient {
   }
 
   async getRecentlyPlayedGames(): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/games/recent');
+    return this.apiClient.get(this.endpoint('/games/recent'));
   }
 
   // ==================== Bet Management ====================
 
   async placeBet(betData: any): Promise<ApiResponse<any>> {
-    return this.apiClient.post('/bets', betData);
+    return this.apiClient.post(this.endpoint('/bets'), betData);
   }
 
   async getBetHistory(params?: PaginationParams): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/bets', { params });
+    return this.apiClient.get(this.endpoint('/bets'), { params });
   }
 
   async getBetById(betId: string): Promise<ApiResponse<any>> {
@@ -156,11 +178,11 @@ export class PlayerApiClient {
   // ==================== Bonus Management ====================
 
   async getAvailableBonuses(): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/bonuses/available');
+    return this.apiClient.get(this.endpoint('/bonuses/available'));
   }
 
   async getActiveBonuses(): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/bonuses/active');
+    return this.apiClient.get(this.endpoint('/bonuses/active'));
   }
 
   async claimBonus(bonusId: string): Promise<ApiResponse<any>> {
@@ -178,7 +200,7 @@ export class PlayerApiClient {
   // ==================== Notification Management ====================
 
   async getNotifications(params?: PaginationParams): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/notifications', { params });
+    return this.apiClient.get(this.endpoint('/notifications'), { params });
   }
 
   async markNotificationAsRead(notificationId: string): Promise<ApiResponse<void>> {
@@ -186,7 +208,7 @@ export class PlayerApiClient {
   }
 
   async markAllNotificationsAsRead(): Promise<ApiResponse<void>> {
-    return this.apiClient.post('/notifications/read-all');
+    return this.apiClient.post(this.endpoint('/notifications/read-all'));
   }
 
   async deleteNotification(notificationId: string): Promise<ApiResponse<void>> {
@@ -196,33 +218,33 @@ export class PlayerApiClient {
   // ==================== Responsible Gaming ====================
 
   async setDepositLimit(limit: number, period: string): Promise<ApiResponse<any>> {
-    return this.apiClient.post('/responsible-gaming/deposit-limit', { limit, period });
+    return this.apiClient.post(this.endpoint('/responsible-gaming/deposit-limit'), { limit, period });
   }
 
   async setLossLimit(limit: number, period: string): Promise<ApiResponse<any>> {
-    return this.apiClient.post('/responsible-gaming/loss-limit', { limit, period });
+    return this.apiClient.post(this.endpoint('/responsible-gaming/loss-limit'), { limit, period });
   }
 
   async setSessionTimeLimit(minutes: number): Promise<ApiResponse<any>> {
-    return this.apiClient.post('/responsible-gaming/session-limit', { minutes });
+    return this.apiClient.post(this.endpoint('/responsible-gaming/session-limit'), { minutes });
   }
 
   async selfExclude(duration: number, unit: 'days' | 'weeks' | 'months'): Promise<ApiResponse<any>> {
-    return this.apiClient.post('/responsible-gaming/self-exclude', { duration, unit });
+    return this.apiClient.post(this.endpoint('/responsible-gaming/self-exclude'), { duration, unit });
   }
 
   async getRealityCheck(): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/responsible-gaming/reality-check');
+    return this.apiClient.get(this.endpoint('/responsible-gaming/reality-check'));
   }
 
   // ==================== Support ====================
 
   async createSupportTicket(ticketData: any): Promise<ApiResponse<any>> {
-    return this.apiClient.post('/support/tickets', ticketData);
+    return this.apiClient.post(this.endpoint('/support/tickets'), ticketData);
   }
 
   async getSupportTickets(params?: PaginationParams): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/support/tickets', { params });
+    return this.apiClient.get(this.endpoint('/support/tickets'), { params });
   }
 
   async getSupportTicketById(ticketId: string): Promise<ApiResponse<any>> {

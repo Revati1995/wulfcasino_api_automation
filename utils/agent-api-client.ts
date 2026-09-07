@@ -11,6 +11,7 @@ import { ApiResponse, PaginationParams } from '../types';
 export class AgentApiClient {
   private apiClient: ApiClient;
   private authHelper: AuthHelper;
+  private readonly basePath = '/api/v1/admin';
 
   constructor() {
     this.apiClient = new ApiClient({
@@ -21,7 +22,7 @@ export class AgentApiClient {
         retryDelay: 1000,
       },
     });
-    this.authHelper = new AuthHelper(this.apiClient);
+    this.authHelper = new AuthHelper(this.apiClient, this.basePath);
   }
 
   /**
@@ -39,6 +40,13 @@ export class AgentApiClient {
   }
 
   /**
+   * Build full endpoint path
+   */
+  private endpoint(path: string): string {
+    return `${this.basePath}${path}`;
+  }
+
+  /**
    * Login as agent
    */
   async loginAsAgent(): Promise<void> {
@@ -52,17 +60,17 @@ export class AgentApiClient {
   // ==================== Profile Management ====================
 
   async getProfile(): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/profile');
+    return this.apiClient.get(this.endpoint('/profile'));
   }
 
   async updateProfile(profileData: any): Promise<ApiResponse<any>> {
-    return this.apiClient.put('/profile', profileData);
+    return this.apiClient.put(this.endpoint('/profile'), profileData);
   }
 
   // ==================== Player Management ====================
 
   async getPlayers(params?: PaginationParams): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/players', { params });
+    return this.apiClient.get(this.endpoint('/players'), { params });
   }
 
   async getPlayerById(playerId: string): Promise<ApiResponse<any>> {
@@ -70,7 +78,7 @@ export class AgentApiClient {
   }
 
   async createPlayer(playerData: any): Promise<ApiResponse<any>> {
-    return this.apiClient.post('/players', playerData);
+    return this.apiClient.post(this.endpoint('/players'), playerData);
   }
 
   async updatePlayer(playerId: string, playerData: any): Promise<ApiResponse<any>> {
@@ -92,35 +100,35 @@ export class AgentApiClient {
   // ==================== Commission Management ====================
 
   async getCommissionSettings(): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/commission/settings');
+    return this.apiClient.get(this.endpoint('/commission/settings'));
   }
 
   async updateCommissionSettings(settings: any): Promise<ApiResponse<any>> {
-    return this.apiClient.put('/commission/settings', settings);
+    return this.apiClient.put(this.endpoint('/commission/settings'), settings);
   }
 
   async getCommissionHistory(params?: PaginationParams): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/commission/history', { params });
+    return this.apiClient.get(this.endpoint('/commission/history'), { params });
   }
 
   async getCommissionReport(startDate: string, endDate: string): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/commission/report', {
+    return this.apiClient.get(this.endpoint('/commission/report'), {
       params: { startDate, endDate },
     });
   }
 
   async requestCommissionPayout(amount: number, paymentMethod: string): Promise<ApiResponse<any>> {
-    return this.apiClient.post('/commission/payout', { amount, paymentMethod });
+    return this.apiClient.post(this.endpoint('/commission/payout'), { amount, paymentMethod });
   }
 
   // ==================== Financial Management ====================
 
   async getFinancialSummary(): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/financials/summary');
+    return this.apiClient.get(this.endpoint('/financials/summary'));
   }
 
   async getTransactions(params?: PaginationParams): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/financials/transactions', { params });
+    return this.apiClient.get(this.endpoint('/financials/transactions'), { params });
   }
 
   async getTransactionById(transactionId: string): Promise<ApiResponse<any>> {
@@ -130,15 +138,15 @@ export class AgentApiClient {
   // ==================== Reports ====================
 
   async getPerformanceReport(params?: any): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/reports/performance', { params });
+    return this.apiClient.get(this.endpoint('/reports/performance'), { params });
   }
 
   async getPlayerActivityReport(params?: any): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/reports/player-activity', { params });
+    return this.apiClient.get(this.endpoint('/reports/player-activity'), { params });
   }
 
   async getRevenueReport(startDate: string, endDate: string): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/reports/revenue', {
+    return this.apiClient.get(this.endpoint('/reports/revenue'), {
       params: { startDate, endDate },
     });
   }
@@ -146,7 +154,7 @@ export class AgentApiClient {
   // ==================== Sub-Agents Management ====================
 
   async getSubAgents(params?: PaginationParams): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/sub-agents', { params });
+    return this.apiClient.get(this.endpoint('/sub-agents'), { params });
   }
 
   async getSubAgentById(subAgentId: string): Promise<ApiResponse<any>> {
@@ -154,7 +162,7 @@ export class AgentApiClient {
   }
 
   async createSubAgent(subAgentData: any): Promise<ApiResponse<any>> {
-    return this.apiClient.post('/sub-agents', subAgentData);
+    return this.apiClient.post(this.endpoint('/sub-agents'), subAgentData);
   }
 
   async updateSubAgent(subAgentId: string, subAgentData: any): Promise<ApiResponse<any>> {
@@ -168,11 +176,11 @@ export class AgentApiClient {
   // ==================== Marketing Tools ====================
 
   async getMarketingLinks(): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/marketing/links');
+    return this.apiClient.get(this.endpoint('/marketing/links'));
   }
 
   async createMarketingLink(linkData: any): Promise<ApiResponse<any>> {
-    return this.apiClient.post('/marketing/links', linkData);
+    return this.apiClient.post(this.endpoint('/marketing/links'), linkData);
   }
 
   async getMarketingLinkStats(linkId: string): Promise<ApiResponse<any>> {
@@ -180,7 +188,7 @@ export class AgentApiClient {
   }
 
   async getPromotionalMaterials(): Promise<ApiResponse<any>> {
-    return this.apiClient.get('/marketing/materials');
+    return this.apiClient.get(this.endpoint('/marketing/materials'));
   }
 
   // ==================== Cleanup ====================
