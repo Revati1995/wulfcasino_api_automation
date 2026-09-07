@@ -1,6 +1,10 @@
 /**
  * Test Data Generator
  * Generates realistic test data for various entities
+ *
+ * Uses the @faker-js/faker v10 API (faker.person, faker.location, faker.helpers,
+ * faker.string, faker.number). The pre-v8 namespaces (faker.name, faker.address,
+ * faker.random, faker.datatype.uuid, faker.internet.userName) no longer exist.
  */
 
 import { faker } from '@faker-js/faker';
@@ -12,16 +16,16 @@ export class DataGenerator {
   static generateUser(overrides: any = {}) {
     return {
       email: faker.internet.email().toLowerCase(),
-      username: faker.internet.userName().toLowerCase(),
+      username: faker.internet.username().replace(/[^a-z0-9_]/gi, '').toLowerCase(),
       password: 'Test123!@#',
-      firstName: faker.name.firstName(),
-      lastName: faker.name.lastName(),
-      phone: faker.phone.phoneNumber(),
-      dateOfBirth: faker.date.past(30, new Date(2000, 0, 1)).toISOString().split('T')[0],
-      country: faker.address.countryCode(),
-      city: faker.address.city(),
-      address: faker.address.streetAddress(),
-      postalCode: faker.address.zipCode(),
+      firstName: faker.person.firstName(),
+      lastName: faker.person.lastName(),
+      phone: faker.phone.number({ style: 'international' }),
+      dateOfBirth: faker.date.birthdate({ min: 21, max: 60, mode: 'age' }).toISOString().split('T')[0],
+      country: faker.location.countryCode(),
+      city: faker.location.city(),
+      address: faker.location.streetAddress(),
+      postalCode: faker.location.zipCode(),
       ...overrides,
     };
   }
@@ -33,7 +37,7 @@ export class DataGenerator {
     return {
       email: faker.internet.email().toLowerCase(),
       password: 'Admin123!@#',
-      name: faker.name.findName(),
+      name: faker.person.fullName(),
       role: 'admin',
       permissions: ['users.read', 'users.write', 'games.read', 'games.write'],
       ...overrides,
@@ -53,17 +57,34 @@ export class DataGenerator {
   }
 
   /**
+   * Generate a POST /api/v1/auth/register payload in the shape the backend expects:
+   * { entity, dob, password, isAgreedToTermsConditions, username, timezone }
+   */
+  static generatePlayerRegistration(overrides: any = {}) {
+    const user = this.generateUser();
+    return {
+      entity: user.email,
+      dob: user.dateOfBirth,
+      password: user.password,
+      isAgreedToTermsConditions: true,
+      username: user.username,
+      timezone: 'America/New_York',
+      ...overrides,
+    };
+  }
+
+  /**
    * Generate random agent data
    */
   static generateAgent(overrides: any = {}) {
     return {
       email: faker.internet.email().toLowerCase(),
       password: 'Agent123!@#',
-      name: faker.company.companyName(),
-      commission: parseFloat(faker.finance.amount(5, 20, 2)),
+      name: faker.company.name(),
+      commission: parseFloat(faker.finance.amount({ min: 5, max: 20, dec: 2 })),
       status: 'active',
-      phone: faker.phone.phoneNumber(),
-      country: faker.address.countryCode(),
+      phone: faker.phone.number({ style: 'international' }),
+      country: faker.location.countryCode(),
       ...overrides,
     };
   }
@@ -73,19 +94,19 @@ export class DataGenerator {
    */
   static generateGame(overrides: any = {}) {
     const gameTypes = ['slot', 'table', 'live', 'poker', 'scratch'];
-    const providers = ['NetEnt', 'Microgaming', 'Evolution', 'Pragmatic Play', 'Play\'n GO'];
+    const providers = ['NetEnt', 'Microgaming', 'Evolution', 'Pragmatic Play', "Play'n GO"];
 
     return {
-      name: `${faker.commerce.productName()} ${faker.random.word()}`,
-      provider: faker.random.arrayElement(providers),
-      category: faker.random.arrayElement(gameTypes),
-      type: faker.random.arrayElement(gameTypes),
+      name: `${faker.commerce.productName()} ${faker.word.sample()}`,
+      provider: faker.helpers.arrayElement(providers),
+      category: faker.helpers.arrayElement(gameTypes),
+      type: faker.helpers.arrayElement(gameTypes),
       status: 'active',
-      rtp: parseFloat(faker.finance.amount(92, 98, 2)),
-      minBet: parseFloat(faker.finance.amount(0.1, 1, 2)),
-      maxBet: parseFloat(faker.finance.amount(100, 1000, 2)),
+      rtp: parseFloat(faker.finance.amount({ min: 92, max: 98, dec: 2 })),
+      minBet: parseFloat(faker.finance.amount({ min: 0.1, max: 1, dec: 2 })),
+      maxBet: parseFloat(faker.finance.amount({ min: 100, max: 1000, dec: 2 })),
       description: faker.lorem.sentence(),
-      thumbnailUrl: faker.image.imageUrl(400, 300, 'casino', true),
+      thumbnailUrl: faker.image.url({ width: 400, height: 300 }),
       ...overrides,
     };
   }
@@ -99,10 +120,10 @@ export class DataGenerator {
 
     return {
       playerId,
-      type: faker.random.arrayElement(types),
-      amount: parseFloat(faker.finance.amount(10, 1000, 2)),
+      type: faker.helpers.arrayElement(types),
+      amount: parseFloat(faker.finance.amount({ min: 10, max: 1000, dec: 2 })),
       currency: 'USD',
-      status: faker.random.arrayElement(statuses),
+      status: faker.helpers.arrayElement(statuses),
       paymentMethod: 'credit_card',
       ...overrides,
     };
@@ -112,8 +133,8 @@ export class DataGenerator {
    * Generate random bet data
    */
   static generateBet(playerId: string, gameId: string, overrides: any = {}) {
-    const amount = parseFloat(faker.finance.amount(1, 100, 2));
-    const multiplier = parseFloat(faker.finance.amount(0, 5, 2));
+    const amount = parseFloat(faker.finance.amount({ min: 1, max: 100, dec: 2 }));
+    const multiplier = parseFloat(faker.finance.amount({ min: 0, max: 5, dec: 2 }));
 
     return {
       playerId,
@@ -135,11 +156,11 @@ export class DataGenerator {
 
     return {
       name: `${faker.commerce.productAdjective()} Bonus`,
-      type: faker.random.arrayElement(bonusTypes),
-      amount: parseFloat(faker.finance.amount(10, 500, 2)),
+      type: faker.helpers.arrayElement(bonusTypes),
+      amount: parseFloat(faker.finance.amount({ min: 10, max: 500, dec: 2 })),
       currency: 'USD',
-      wagerRequirement: faker.datatype.number({ min: 20, max: 50 }),
-      validDays: faker.datatype.number({ min: 7, max: 30 }),
+      wagerRequirement: faker.number.int({ min: 20, max: 50 }),
+      validDays: faker.number.int({ min: 7, max: 30 }),
       status: 'active',
       description: faker.lorem.sentence(),
       termsAndConditions: faker.lorem.paragraph(),
@@ -155,12 +176,9 @@ export class DataGenerator {
 
     return {
       url: faker.internet.url(),
-      events: [
-        faker.random.arrayElement(events),
-        faker.random.arrayElement(events),
-      ],
+      events: faker.helpers.arrayElements(events, 2),
       status: 'active',
-      secret: faker.random.alphaNumeric(32),
+      secret: faker.string.alphanumeric(32),
       description: faker.lorem.sentence(),
       ...overrides,
     };
@@ -176,8 +194,8 @@ export class DataGenerator {
     return {
       playerId,
       subject: faker.lorem.sentence(),
-      category: faker.random.arrayElement(categories),
-      priority: faker.random.arrayElement(priorities),
+      category: faker.helpers.arrayElement(categories),
+      priority: faker.helpers.arrayElement(priorities),
       message: faker.lorem.paragraph(),
       status: 'open',
       ...overrides,
@@ -190,11 +208,11 @@ export class DataGenerator {
   static generateMarketingLink(agentId: string, overrides: any = {}) {
     return {
       agentId,
-      name: `Campaign ${faker.random.alphaNumeric(8)}`,
-      url: `https://wulfcasino.com/ref/${faker.random.alphaNumeric(10)}`,
+      name: `Campaign ${faker.string.alphanumeric(8)}`,
+      url: `https://wulfcasino.com/ref/${faker.string.alphanumeric(10)}`,
       campaign: faker.company.catchPhrase(),
-      medium: faker.random.arrayElement(['email', 'social', 'website', 'paid']),
-      source: faker.random.arrayElement(['facebook', 'google', 'twitter', 'instagram']),
+      medium: faker.helpers.arrayElement(['email', 'social', 'website', 'paid']),
+      source: faker.helpers.arrayElement(['facebook', 'google', 'twitter', 'instagram']),
       status: 'active',
       ...overrides,
     };
@@ -211,42 +229,42 @@ export class DataGenerator {
    * Generate random password
    */
   static generatePassword(length: number = 12): string {
-    return faker.internet.password(length, true, /[A-Za-z0-9!@#$%]/);
+    return faker.internet.password({ length, memorable: true, pattern: /[A-Za-z0-9!@#$%]/ });
   }
 
   /**
    * Generate unique ID
    */
   static generateId(): string {
-    return faker.datatype.uuid();
+    return faker.string.uuid();
   }
 
   /**
    * Generate random amount
    */
   static generateAmount(min: number = 10, max: number = 1000): number {
-    return parseFloat(faker.finance.amount(min, max, 2));
+    return parseFloat(faker.finance.amount({ min, max, dec: 2 }));
   }
 
   /**
    * Generate random date in the past
    */
   static generatePastDate(years: number = 1): string {
-    return faker.date.past(years).toISOString();
+    return faker.date.past({ years }).toISOString();
   }
 
   /**
    * Generate random date in the future
    */
   static generateFutureDate(years: number = 1): string {
-    return faker.date.future(years).toISOString();
+    return faker.date.future({ years }).toISOString();
   }
 
   /**
    * Generate random phone number
    */
   static generatePhoneNumber(): string {
-    return faker.phone.phoneNumber();
+    return faker.phone.number({ style: 'international' });
   }
 
   /**
@@ -255,4 +273,69 @@ export class DataGenerator {
   static generateUrl(): string {
     return faker.internet.url();
   }
+
+  /**
+   * Generate a POST /api/v1/admin/users payload (admin-created player account):
+   * { entity, name, password }
+   * Only password is required by the backend; `entity` is the login email.
+   * The isActive / isPremium / isVerified flags are deliberately omitted: the
+   * backend DTO rejects JSON booleans for them ("isActive must be a string").
+   */
+  static generateAdminUser(overrides: any = {}) {
+    const stamp = `${Date.now()}_${faker.string.alphanumeric(5).toLowerCase()}`;
+    return {
+      entity: `admin_test_${stamp}@test.com`,
+      name: faker.person.fullName(),
+      password: 'Test123!@#',
+      ...overrides,
+    };
+  }
+
+  /**
+   * Generate a POST /api/v1/admin/bonus/create payload (CreateBonusDto).
+   * Created inactive by default so it is never visible to real staging players.
+   */
+  static generateAdminBonus(overrides: any = {}) {
+    return {
+      name: `Test Bonus ${Date.now()} ${faker.string.alphanumeric(4)}`,
+      description: faker.lorem.sentence(),
+      type: 'deposit_match',
+      matchPercentage: 100,
+      maxBonus: 100,
+      rewardCurrency: 'wulf_coin',
+      minDeposit: 10,
+      wageringMultiplier: 20,
+      wageringType: 'bonus',
+      validityDays: 30,
+      playerStatus: 'all',
+      isActive: false,
+      ...overrides,
+    };
+  }
+
+  /**
+   * Generate a POST /api/v1/agent/promo-codes/create payload (CreatePromoCodeDto).
+   * discountType enum: percentage | flat. Agent-created codes enter the approval flow
+   * (approvalStatus "pending", isActive false) so they never reach real players unreviewed.
+   */
+  static generateAgentPromoCode(overrides: any = {}) {
+    const start = new Date();
+    const end = new Date(start.getTime() + 30 * 24 * 60 * 60 * 1000);
+    return {
+      code: `QA${faker.string.alphanumeric(8).toUpperCase()}`,
+      description: `QA automation promo ${Date.now()}`,
+      discountType: 'percentage',
+      discountValue: faker.number.int({ min: 5, max: 20 }),
+      minPurchaseAmount: 0,
+      maxDiscountAmount: 50,
+      maxUsage: 10,
+      maxUsagePerUser: 1,
+      currency: 'USD',
+      startDate: start.toISOString(),
+      endDate: end.toISOString(),
+      isActive: true,
+      ...overrides,
+    };
+  }
+
 }

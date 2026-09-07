@@ -1,9 +1,18 @@
 /**
  * Player API - Wallet Management Tests
+ *
+ * The wallet is dual-currency (wulfCash / wulfCoin). There is no plain deposit API
+ * (deposits are Coinflow/Breeze payin pages) and POST /redeem/request creates a real
+ * withdrawal after a SEON gate, so both groups are skipped on the shared account.
  */
 
 import { test, expect } from '../../fixtures/api-fixtures';
-import { TestData, TestHelpers, DataGenerator } from '../../fixtures';
+import { TestData, TestHelpers } from '../../fixtures';
+
+const NO_DEPOSIT =
+  'Backend has no plain wallet deposit endpoint; deposits are Coinflow/Breeze payin pages that create real payment sessions (checked postman/WulfCasino-Player-API)';
+const WITHDRAW_MUTATES =
+  'Skipped: mutates real player balance/status on staging (POST /redeem/request runs the SEON withdrawal gate and creates a redeem request)';
 
 test.describe('Player API - Wallet Management', () => {
   test.describe('Wallet Information', () => {
@@ -12,7 +21,10 @@ test.describe('Player API - Wallet Management', () => {
 
       TestHelpers.assertSuccess(response, 'Get wallet should succeed');
       TestHelpers.assertHasData(response);
-      TestHelpers.assertHasProperties(response.data, ['balance', 'currency']);
+      // GET /wallet/balance: dual-currency wallet (wulfCash / wulfCoin)
+      TestHelpers.assertHasProperties(response.data, ['userId', 'wulfCash', 'wulfCoin', 'redeemableWulfCash']);
+      expect(typeof response.data.wulfCash).toBe('number');
+      expect(typeof response.data.wulfCoin).toBe('number');
     });
 
     test('should get wallet balance', async ({ authenticatedPlayerApi }) => {
@@ -20,13 +32,35 @@ test.describe('Player API - Wallet Management', () => {
 
       TestHelpers.assertSuccess(response, 'Get wallet balance should succeed');
       TestHelpers.assertHasData(response);
-      expect(response.data).toHaveProperty('balance');
-      expect(typeof response.data?.balance).toBe('number');
+      for (const field of ['wulfCash', 'wulfCoin', 'bonusWulfCash', 'redeemableWulfCash']) {
+        expect(typeof response.data?.[field], `${field} should be a number`).toBe('number');
+        expect(response.data?.[field]).toBeGreaterThanOrEqual(0);
+      }
+      // Redeemable cash can never exceed the cash balance
+      expect(response.data.redeemableWulfCash).toBeLessThanOrEqual(response.data.wulfCash);
+    });
+
+    test('should get redeemable balance', async ({ authenticatedPlayerApi }) => {
+      const wallet = await authenticatedPlayerApi.getWalletBalance();
+      const response = await authenticatedPlayerApi.getRedeemableBalance();
+
+      TestHelpers.assertSuccess(response, 'Get redeemable balance should succeed');
+      TestHelpers.assertHasProperties(response.data, [
+        'redeemableWulfCash',
+        'wulfCash',
+        'availableToWithdraw',
+        'pendingRedeems',
+        'redeemLimits',
+      ]);
+      // GET /redeem/balance mirrors GET /wallet/balance
+      expect(response.data.redeemableWulfCash).toBe(wallet.data.redeemableWulfCash);
+      expect(response.data.wulfCash).toBe(wallet.data.wulfCash);
     });
   });
 
   test.describe('Deposits', () => {
     test('should create deposit request @regression', async ({ authenticatedPlayerApi }) => {
+      test.skip(true, NO_DEPOSIT);
       const depositData = {
         amount: 100.0,
         paymentMethod: 'credit_card',
@@ -47,30 +81,35 @@ test.describe('Player API - Wallet Management', () => {
     });
 
     test('should fail deposit with invalid amount', async ({ authenticatedPlayerApi }) => {
+      test.skip(true, NO_DEPOSIT);
       const response = await authenticatedPlayerApi.deposit(-50, 'credit_card');
 
       TestHelpers.assertFailure(response, 'Negative deposit should fail');
     });
 
     test('should fail deposit with zero amount', async ({ authenticatedPlayerApi }) => {
+      test.skip(true, NO_DEPOSIT);
       const response = await authenticatedPlayerApi.deposit(0, 'credit_card');
 
       TestHelpers.assertFailure(response);
     });
 
     test('should fail deposit with invalid payment method', async ({ authenticatedPlayerApi }) => {
+      test.skip(true, NO_DEPOSIT);
       const response = await authenticatedPlayerApi.deposit(100, 'invalid_method');
 
       TestHelpers.assertFailure(response);
     });
 
     test('should validate minimum deposit amount', async ({ authenticatedPlayerApi }) => {
+      test.skip(true, NO_DEPOSIT);
       const response = await authenticatedPlayerApi.deposit(0.01, 'credit_card'); // Below minimum
 
       TestHelpers.assertFailure(response);
     });
 
     test('should validate maximum deposit amount', async ({ authenticatedPlayerApi }) => {
+      test.skip(true, NO_DEPOSIT);
       const response = await authenticatedPlayerApi.deposit(1000000, 'credit_card'); // Above maximum
 
       TestHelpers.assertFailure(response);
@@ -79,11 +118,10 @@ test.describe('Player API - Wallet Management', () => {
 
   test.describe('Withdrawals', () => {
     test('should create withdrawal request', async ({ authenticatedPlayerApi }) => {
+      test.skip(true, WITHDRAW_MUTATES);
       const withdrawalData = {
         amount: 50.0,
-        paymentMethod: 'bank_transfer',
-        bankAccount: '1234567890',
-        bankCode: 'TEST123',
+        paymentMethod: 'Coinflow',
       };
 
       const response = await authenticatedPlayerApi.withdraw(
@@ -97,25 +135,29 @@ test.describe('Player API - Wallet Management', () => {
     });
 
     test('should fail withdrawal with insufficient balance', async ({ authenticatedPlayerApi }) => {
-      const response = await authenticatedPlayerApi.withdraw(999999, 'bank_transfer');
+      test.skip(true, WITHDRAW_MUTATES);
+      const response = await authenticatedPlayerApi.withdraw(999999, 'Coinflow');
 
       TestHelpers.assertFailure(response);
     });
 
     test('should fail withdrawal with invalid amount', async ({ authenticatedPlayerApi }) => {
-      const response = await authenticatedPlayerApi.withdraw(-50, 'bank_transfer');
+      test.skip(true, WITHDRAW_MUTATES);
+      const response = await authenticatedPlayerApi.withdraw(-50, 'Coinflow');
 
       TestHelpers.assertFailure(response);
     });
 
     test('should fail withdrawal with zero amount', async ({ authenticatedPlayerApi }) => {
-      const response = await authenticatedPlayerApi.withdraw(0, 'bank_transfer');
+      test.skip(true, WITHDRAW_MUTATES);
+      const response = await authenticatedPlayerApi.withdraw(0, 'Coinflow');
 
       TestHelpers.assertFailure(response);
     });
 
     test('should validate minimum withdrawal amount', async ({ authenticatedPlayerApi }) => {
-      const response = await authenticatedPlayerApi.withdraw(1, 'bank_transfer'); // Below minimum
+      test.skip(true, WITHDRAW_MUTATES);
+      const response = await authenticatedPlayerApi.withdraw(1, 'Coinflow'); // Below minimum
 
       TestHelpers.assertFailure(response);
     });
@@ -130,6 +172,8 @@ test.describe('Player API - Wallet Management', () => {
 
       TestHelpers.assertSuccess(response, 'Get transaction history should succeed');
       TestHelpers.assertHasData(response);
+      // GET /transactions/me: { data, total, page, limit }
+      TestHelpers.assertPaginationStructure(response.data);
     });
 
     test('should get transaction by ID', async ({ authenticatedPlayerApi }) => {
@@ -138,51 +182,65 @@ test.describe('Player API - Wallet Management', () => {
         page: 1,
         limit: 1,
       });
+      TestHelpers.assertSuccess(listResponse);
+      const rows = TestHelpers.paginatedRows(listResponse.data);
+      test.skip(rows.length === 0, 'No transactions on the staging account to look up');
 
-      if (listResponse.data?.data && listResponse.data.data.length > 0) {
-        const transactionId = listResponse.data.data[0].id;
+      const transactionId = rows[0].id;
 
-        const response = await authenticatedPlayerApi.getTransactionById(transactionId);
+      // GET /transactions/me/:id/detail
+      const response = await authenticatedPlayerApi.getTransactionById(transactionId);
 
-        TestHelpers.assertSuccess(response);
-        TestHelpers.assertHasData(response);
-        expect(response.data?.id).toBe(transactionId);
-      }
+      TestHelpers.assertSuccess(response);
+      TestHelpers.assertHasData(response);
+      expect(response.data?.id).toBe(transactionId);
+      TestHelpers.assertHasProperties(response.data, ['userId', 'type', 'source', 'createdAt']);
     });
 
     test('should filter transactions by type', async ({ authenticatedPlayerApi }) => {
+      // type enum: CREDIT, DEBIT, DEPOSIT, PROMOTION
       const response = await authenticatedPlayerApi.getTransactionHistory({
         page: 1,
         limit: 10,
-        type: 'deposit',
+        type: 'DEPOSIT',
       });
 
       TestHelpers.assertSuccess(response);
-      TestHelpers.assertHasData(response);
+      TestHelpers.assertPaginationStructure(response.data);
+      for (const row of TestHelpers.paginatedRows(response.data)) {
+        expect(row.type).toBe('DEPOSIT');
+      }
     });
 
     test('should filter transactions by date range', async ({ authenticatedPlayerApi }) => {
+      // GET /transactions/me uses fromDate / toDate (YYYY-MM-DD)
+      const { startDate, endDate } = TestData.dateRanges.lastMonth;
       const response = await authenticatedPlayerApi.getTransactionHistory({
         page: 1,
         limit: 10,
-        startDate: TestData.dateRanges.lastWeek.startDate,
-        endDate: TestData.dateRanges.lastWeek.endDate,
+        fromDate: startDate,
+        toDate: endDate,
       });
 
       TestHelpers.assertSuccess(response);
-      TestHelpers.assertHasData(response);
+      TestHelpers.assertPaginationStructure(response.data);
+      const from = new Date(startDate).getTime();
+      for (const row of TestHelpers.paginatedRows(response.data)) {
+        expect(new Date(row.createdAt).getTime()).toBeGreaterThanOrEqual(from);
+      }
     });
 
-    test('should sort transactions', async ({ authenticatedPlayerApi }) => {
-      const response = await authenticatedPlayerApi.getTransactionHistory({
-        page: 1,
-        limit: 10,
-        sortBy: 'createdAt',
-        sortOrder: 'desc',
-      });
+    test('should return transactions newest first', async ({ authenticatedPlayerApi }) => {
+      // GET /transactions/me has no sort parameters; the default order is newest first
+      const response = await authenticatedPlayerApi.getTransactionHistory({ page: 1, limit: 10 });
 
       TestHelpers.assertSuccess(response);
-      TestHelpers.assertHasData(response);
+      const rows = TestHelpers.paginatedRows(response.data);
+      for (let i = 1; i < rows.length; i++) {
+        expect(new Date(rows[i - 1].createdAt).getTime()).toBeGreaterThanOrEqual(
+          new Date(rows[i].createdAt).getTime()
+        );
+      }
     });
 
     test('should paginate transaction history', async ({ authenticatedPlayerApi }) => {
@@ -191,6 +249,16 @@ test.describe('Player API - Wallet Management', () => {
 
       TestHelpers.assertSuccess(page1);
       TestHelpers.assertSuccess(page2);
+      expect(page1.data?.page).toBe(1);
+      expect(page1.data?.limit).toBe(5);
+      expect(page2.data?.page).toBe(2);
+
+      const ids1 = TestHelpers.paginatedRows(page1.data).map((r: any) => r.id);
+      const ids2 = TestHelpers.paginatedRows(page2.data).map((r: any) => r.id);
+      expect(ids1.length).toBeLessThanOrEqual(5);
+      for (const id of ids2) {
+        expect(ids1).not.toContain(id);
+      }
     });
   });
 
@@ -203,6 +271,7 @@ test.describe('Player API - Wallet Management', () => {
     });
 
     test('should require authentication for deposit', async ({ playerApi }) => {
+      test.skip(true, NO_DEPOSIT);
       const response = await playerApi.deposit(100, 'credit_card');
 
       TestHelpers.assertFailure(response);
@@ -210,7 +279,8 @@ test.describe('Player API - Wallet Management', () => {
     });
 
     test('should require authentication for withdrawal', async ({ playerApi }) => {
-      const response = await playerApi.withdraw(50, 'bank_transfer');
+      // POST /redeem/request without a token is rejected before any gate runs
+      const response = await playerApi.withdraw(50, 'Coinflow');
 
       TestHelpers.assertFailure(response);
       TestHelpers.assertStatusCode(response, 401);

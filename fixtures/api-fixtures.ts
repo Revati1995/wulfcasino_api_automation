@@ -1,6 +1,12 @@
 /**
  * Playwright API Fixtures
  * Custom fixtures for API testing with automatic setup and teardown
+ *
+ * The `authenticated*Api` fixtures reuse the token cached by global-setup.ts
+ * (see utils/token-store.ts) instead of logging in per test: login endpoints
+ * are throttled at 5 requests/min per IP. Tests that need a session of their
+ * own (e.g. logout) should use the unauthenticated fixture and call
+ * `loginAsX({ fresh: true })` themselves.
  */
 
 import { test as base } from '@playwright/test';
@@ -65,7 +71,7 @@ export const test = base.extend<ApiFixtures>({
   },
 
   /**
-   * Authenticated Admin API Client
+   * Authenticated Admin API Client (shared cached token)
    */
   authenticatedAdminApi: async ({}, use) => {
     logger.info('Setting up authenticated Admin API client');
@@ -74,9 +80,10 @@ export const test = base.extend<ApiFixtures>({
 
     try {
       await client.loginAsAdmin();
-      logger.info('Admin authentication successful');
+      logger.info('Admin authentication ready');
     } catch (error) {
       logger.error('Admin authentication failed', error);
+      await client.dispose();
       throw error;
     }
 
@@ -87,7 +94,7 @@ export const test = base.extend<ApiFixtures>({
   },
 
   /**
-   * Authenticated Player API Client
+   * Authenticated Player API Client (shared cached token)
    */
   authenticatedPlayerApi: async ({}, use) => {
     logger.info('Setting up authenticated Player API client');
@@ -96,9 +103,10 @@ export const test = base.extend<ApiFixtures>({
 
     try {
       await client.loginAsPlayer();
-      logger.info('Player authentication successful');
+      logger.info('Player authentication ready');
     } catch (error) {
       logger.error('Player authentication failed', error);
+      await client.dispose();
       throw error;
     }
 
@@ -109,7 +117,7 @@ export const test = base.extend<ApiFixtures>({
   },
 
   /**
-   * Authenticated Agent API Client
+   * Authenticated Agent API Client (shared cached token)
    */
   authenticatedAgentApi: async ({}, use) => {
     logger.info('Setting up authenticated Agent API client');
@@ -118,9 +126,10 @@ export const test = base.extend<ApiFixtures>({
 
     try {
       await client.loginAsAgent();
-      logger.info('Agent authentication successful');
+      logger.info('Agent authentication ready');
     } catch (error) {
       logger.error('Agent authentication failed', error);
+      await client.dispose();
       throw error;
     }
 

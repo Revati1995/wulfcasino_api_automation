@@ -1,9 +1,16 @@
 /**
  * Player API - Bonuses Tests
+ *
+ * Read-only against the shared staging account: claiming (POST /bonus/claim) and
+ * forfeiting (POST /bonus/forfeit/:id) change real bonus balances and are skipped.
+ * Non-existent-id negatives use random UUIDs: non-UUID ids make the backend answer 500.
  */
 
 import { test, expect } from '../../fixtures/api-fixtures';
-import { TestHelpers } from '../../fixtures';
+import { TestHelpers, DataGenerator } from '../../fixtures';
+
+const mutates = (endpoint: string) => `Skipped: mutates real player balance/status on staging (${endpoint})`;
+const NO_BONUS_FILTERS = 'Backend has no query filters on GET /bonus/eligible (checked postman/WulfCasino-Player-API)';
 
 test.describe('Player API - Bonuses', () => {
   test.describe('Available Bonuses', () => {
@@ -16,28 +23,31 @@ test.describe('Player API - Bonuses', () => {
     });
 
     test('should get bonus details', async ({ authenticatedPlayerApi }) => {
-      // First get available bonuses
-      const listResponse = await authenticatedPlayerApi.getAvailableBonuses();
+      // GET /bonus/my-bonuses/:id resolves a USER bonus (claimed), not a bonus definition
+      const listResponse = await authenticatedPlayerApi.getMyBonuses();
+      TestHelpers.assertSuccess(listResponse);
+      TestHelpers.assertDataIsArray(listResponse);
+      test.skip(listResponse.data.length === 0, 'No claimed bonuses on the staging account');
 
-      if (listResponse.data && listResponse.data.length > 0) {
-        const bonusId = listResponse.data[0].id;
+      const userBonusId = listResponse.data[0].id;
 
-        const response = await authenticatedPlayerApi.getBonusDetails(bonusId);
+      const response = await authenticatedPlayerApi.getBonusDetails(userBonusId);
 
-        TestHelpers.assertSuccess(response);
-        TestHelpers.assertHasData(response);
-        TestHelpers.assertHasProperties(response.data, [
-          'id',
-          'name',
-          'type',
-          'amount',
-          'wagerRequirement',
-        ]);
-      }
+      TestHelpers.assertSuccess(response);
+      TestHelpers.assertHasData(response);
+      expect(response.data?.id).toBe(userBonusId);
+      TestHelpers.assertHasProperties(response.data, ['bonusId', 'bonus']);
+      TestHelpers.assertHasProperties(response.data.bonus, [
+        'id',
+        'name',
+        'type',
+        'maxBonus',
+        'wageringMultiplier',
+      ]);
     });
 
     test('should fail to get non-existent bonus', async ({ authenticatedPlayerApi }) => {
-      const response = await authenticatedPlayerApi.getBonusDetails('non-existent-id');
+      const response = await authenticatedPlayerApi.getBonusDetails(DataGenerator.generateId());
 
       TestHelpers.assertFailure(response);
       TestHelpers.assertStatusCode(response, 404);
@@ -52,10 +62,21 @@ test.describe('Player API - Bonuses', () => {
       TestHelpers.assertHasData(response);
       TestHelpers.assertDataIsArray(response);
     });
+
+    test('should get my claimed bonuses', async ({ authenticatedPlayerApi }) => {
+      const response = await authenticatedPlayerApi.getMyBonuses();
+
+      TestHelpers.assertSuccess(response, 'Get my bonuses should succeed');
+      TestHelpers.assertDataIsArray(response);
+      for (const userBonus of response.data) {
+        TestHelpers.assertHasProperties(userBonus, ['id', 'userId', 'bonusId', 'bonus']);
+      }
+    });
   });
 
   test.describe('Bonus Claims', () => {
     test('should claim available bonus @regression', async ({ authenticatedPlayerApi }) => {
+      test.skip(true, mutates('POST /bonus/claim'));
       // Get available bonuses
       const listResponse = await authenticatedPlayerApi.getAvailableBonuses();
 
@@ -75,13 +96,15 @@ test.describe('Player API - Bonuses', () => {
     });
 
     test('should fail to claim non-existent bonus', async ({ authenticatedPlayerApi }) => {
-      const response = await authenticatedPlayerApi.claimBonus('non-existent-id');
+      // A random UUID cannot match any bonus, so nothing can be credited
+      const response = await authenticatedPlayerApi.claimBonus(DataGenerator.generateId());
 
       TestHelpers.assertFailure(response);
       TestHelpers.assertStatusCode(response, 404);
     });
 
     test('should fail to claim already claimed bonus', async ({ authenticatedPlayerApi }) => {
+      test.skip(true, mutates('POST /bonus/claim'));
       // Get available bonuses
       const listResponse = await authenticatedPlayerApi.getAvailableBonuses();
 
@@ -99,6 +122,7 @@ test.describe('Player API - Bonuses', () => {
     });
 
     test('should fail to claim expired bonus', async ({ authenticatedPlayerApi }) => {
+      test.skip(true, mutates('POST /bonus/claim; no expired bonus fixture on staging'));
       // This would need an expired bonus ID
       const expiredBonusId = 'expired-bonus-id';
 
@@ -110,6 +134,7 @@ test.describe('Player API - Bonuses', () => {
 
   test.describe('Bonus Cancellation', () => {
     test('should cancel active bonus', async ({ authenticatedPlayerApi }) => {
+      test.skip(true, mutates('POST /bonus/forfeit/:id'));
       // Get active bonuses
       const listResponse = await authenticatedPlayerApi.getActiveBonuses();
 
@@ -123,13 +148,15 @@ test.describe('Player API - Bonuses', () => {
     });
 
     test('should fail to cancel non-existent bonus', async ({ authenticatedPlayerApi }) => {
-      const response = await authenticatedPlayerApi.cancelBonus('non-existent-id');
+      // A random UUID cannot match any user bonus, so nothing can be forfeited
+      const response = await authenticatedPlayerApi.cancelBonus(DataGenerator.generateId());
 
       TestHelpers.assertFailure(response);
       TestHelpers.assertStatusCode(response, 404);
     });
 
     test('should fail to cancel completed bonus', async ({ authenticatedPlayerApi }) => {
+      test.skip(true, mutates('POST /bonus/forfeit/:id; no completed bonus fixture on staging'));
       // This would need a completed bonus ID
       const completedBonusId = 'completed-bonus-id';
 
@@ -141,6 +168,7 @@ test.describe('Player API - Bonuses', () => {
 
   test.describe('Bonus Filters', () => {
     test('should filter bonuses by type', async ({ authenticatedPlayerApi }) => {
+      test.skip(true, NO_BONUS_FILTERS);
       const response = await authenticatedPlayerApi.getAvailableBonuses({
         type: 'welcome',
       });
@@ -150,6 +178,7 @@ test.describe('Player API - Bonuses', () => {
     });
 
     test('should filter bonuses by eligibility', async ({ authenticatedPlayerApi }) => {
+      test.skip(true, NO_BONUS_FILTERS);
       const response = await authenticatedPlayerApi.getAvailableBonuses({
         eligible: true,
       });
@@ -161,23 +190,27 @@ test.describe('Player API - Bonuses', () => {
 
   test.describe('Bonus Validation', () => {
     test('should validate bonus eligibility', async ({ authenticatedPlayerApi }) => {
+      // GET /bonus/eligible is itself the eligibility filter: every entry must be an
+      // active bonus definition whose playerStatus applies to the caller
       const listResponse = await authenticatedPlayerApi.getAvailableBonuses();
 
-      if (listResponse.data && listResponse.data.length > 0) {
-        listResponse.data.forEach((bonus: any) => {
-          expect(bonus).toHaveProperty('eligible');
-        });
+      TestHelpers.assertSuccess(listResponse);
+      TestHelpers.assertDataIsArray(listResponse);
+      for (const bonus of listResponse.data) {
+        TestHelpers.assertHasProperties(bonus, ['id', 'name', 'type', 'playerStatus', 'isActive']);
+        expect(bonus.isActive).toBe(true);
       }
     });
 
     test('should show wager requirements', async ({ authenticatedPlayerApi }) => {
+      // Bonus definitions carry wageringMultiplier / wageringType (decimal strings)
       const listResponse = await authenticatedPlayerApi.getActiveBonuses();
 
-      if (listResponse.data && listResponse.data.length > 0) {
-        listResponse.data.forEach((bonus: any) => {
-          expect(bonus).toHaveProperty('wagerRequirement');
-          expect(bonus).toHaveProperty('wageredAmount');
-        });
+      TestHelpers.assertSuccess(listResponse);
+      TestHelpers.assertDataIsArray(listResponse);
+      for (const bonus of listResponse.data) {
+        TestHelpers.assertHasProperties(bonus, ['wageringMultiplier', 'wageringType', 'maxBonus']);
+        expect(Number(bonus.wageringMultiplier)).not.toBeNaN();
       }
     });
   });
@@ -191,7 +224,7 @@ test.describe('Player API - Bonuses', () => {
     });
 
     test('should require authentication to claim bonus', async ({ playerApi }) => {
-      const response = await playerApi.claimBonus('bonus-id');
+      const response = await playerApi.claimBonus(DataGenerator.generateId());
 
       TestHelpers.assertFailure(response);
       TestHelpers.assertStatusCode(response, 401);

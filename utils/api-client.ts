@@ -7,6 +7,11 @@ import { APIRequestContext, request } from '@playwright/test';
 import { ApiConfig, ApiRequestOptions, ApiResponse, RetryConfig } from '../types';
 import { logger, logApiRequest, logApiResponse, logApiError } from './logger';
 
+/** Fallback wait when the server returns 429 without a Retry-After header. */
+const DEFAULT_RATE_LIMIT_DELAY_MS = 15000;
+/** Never wait longer than this for a single 429 back-off. */
+const MAX_RATE_LIMIT_DELAY_MS = 65000;
+
 export class ApiClient {
   private baseURL: string;
   private defaultHeaders: Record<string, string>;
@@ -33,11 +38,11 @@ export class ApiClient {
    * Initialize the API request context
    */
   async init(): Promise<void> {
-    this.context = await request.newContext({
-      baseURL: this.baseURL,
-      timeout: this.timeout,
-      extraHTTPHeaders: this.defaultHeaders,
-    });
+    await this.ensureContext();
+  }
+
+  getBaseURL(): string {
+    return this.baseURL;
   }
 
   /**
@@ -45,9 +50,6 @@ export class ApiClient {
    */
   setAuthToken(token: string): void {
     this.authToken = token;
-    if (this.context) {
-      this.context = undefined;
-    }
   }
 
   /**
@@ -55,9 +57,6 @@ export class ApiClient {
    */
   clearAuthToken(): void {
     this.authToken = undefined;
-    if (this.context) {
-      this.context = undefined;
-    }
   }
 
   /**
@@ -68,19 +67,16 @@ export class ApiClient {
   }
 
   /**
-   * Ensure context is initialized
+   * Ensure context is initialized.
+   * The Authorization header is applied per request (see makeRequest), so the
+   * context does not need to be recreated when the token changes.
    */
   private async ensureContext(): Promise<APIRequestContext> {
     if (!this.context) {
-      const headers = { ...this.defaultHeaders };
-      if (this.authToken) {
-        headers['Authorization'] = `Bearer ${this.authToken}`;
-      }
-
       this.context = await request.newContext({
         baseURL: this.baseURL,
         timeout: this.timeout,
-        extraHTTPHeaders: headers,
+        extraHTTPHeaders: this.defaultHeaders,
       });
     }
     return this.context;
@@ -93,9 +89,25 @@ export class ApiClient {
     if (!params || Object.keys(params).length === 0) return '';
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
+      if (value === undefined || value === null) return;
       query.append(key, String(value));
     });
-    return `?${query.toString()}`;
+    const qs = query.toString();
+    return qs ? `?${qs}` : '';
+  }
+
+  /**
+   * Work out how long to back off after a 429, honouring Retry-After when present.
+   */
+  private rateLimitDelay(headers: Record<string, string>): number {
+    const retryAfter = headers['retry-after'];
+    if (retryAfter) {
+      const seconds = Number(retryAfter);
+      if (!Number.isNaN(seconds) && seconds > 0) {
+        return Math.min(seconds * 1000 + 500, MAX_RATE_LIMIT_DELAY_MS);
+      }
+    }
+    return DEFAULT_RATE_LIMIT_DELAY_MS;
   }
 
   /**
@@ -116,18 +128,18 @@ export class ApiClient {
 
     const context = await this.ensureContext();
     const url = `${endpoint}${this.buildQueryString(params)}`;
-    const requestHeaders = { ...this.defaultHeaders, ...headers };
+    const fullUrl = `${this.baseURL}${url}`;
+    const requestHeaders: Record<string, string> = { ...this.defaultHeaders, ...headers };
 
     if (requiresAuth && this.authToken) {
       requestHeaders['Authorization'] = `Bearer ${this.authToken}`;
     }
 
     let lastError: any;
-    const retries = this.retryConfig.retries || 3;
+    const retries = this.retryConfig.retries ?? 3;
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        const fullUrl = `${this.baseURL}${url}`;
         logApiRequest(method, fullUrl, body);
 
         const response = await context.fetch(url, {
@@ -142,31 +154,28 @@ export class ApiClient {
 
         logApiResponse(method, fullUrl, statusCode, responseBody);
 
-        // Handle rate limiting with retry
+        // Rate limited: back off (Retry-After aware) and try again
         if (statusCode === 429 && attempt < retries) {
-          const rateLimitDelay = 5000; // Wait 5 seconds for rate limit
-          logger.warn(`Rate limited (429). Waiting ${rateLimitDelay}ms before retry ${attempt + 1}/${retries}`);
-          await this.sleep(rateLimitDelay);
-          continue; // Skip to next retry attempt
+          const delay = this.rateLimitDelay(response.headers());
+          logger.warn(
+            `Rate limited (429) on ${method} ${url}. Waiting ${delay}ms before retry ${attempt + 1}/${retries}`
+          );
+          await this.sleep(delay);
+          continue;
         }
 
         return {
           success: response.ok(),
           data: responseBody,
           statusCode,
-          message: responseBody?.message,
-          error: !response.ok() ? responseBody?.error || responseBody?.message : undefined,
+          message: responseBody && typeof responseBody === 'object' ? responseBody.message : undefined,
+          error: !response.ok() ? this.extractError(responseBody, statusCode) : undefined,
         };
       } catch (error: any) {
         lastError = error;
         logApiError(method, fullUrl, error);
 
-        // If rate limited (429), wait longer
-        if (error.statusCode === 429 || (error.message && error.message.includes('Too Many Requests'))) {
-          const rateLimitDelay = 5000; // Wait 5 seconds for rate limit
-          logger.warn(`Rate limited. Waiting ${rateLimitDelay}ms before retry`);
-          await this.sleep(rateLimitDelay);
-        } else if (attempt < retries) {
+        if (attempt < retries) {
           const delay = this.retryConfig.retryDelay || 1000;
           logger.warn(`Retry attempt ${attempt + 1}/${retries} after ${delay}ms`);
           await this.sleep(delay * (attempt + 1));
@@ -176,9 +185,21 @@ export class ApiClient {
 
     return {
       success: false,
-      error: lastError.message || 'Request failed after retries',
-      statusCode: lastError.statusCode || 500,
+      error: lastError?.message || 'Request failed after retries',
+      statusCode: lastError?.statusCode || 500,
     };
+  }
+
+  /**
+   * Pull a human readable error out of an error body (NestJS style or plain text)
+   */
+  private extractError(body: any, statusCode: number): string {
+    if (body == null) return `HTTP ${statusCode}`;
+    if (typeof body === 'string') return body || `HTTP ${statusCode}`;
+    const msg = body.error || body.message;
+    if (Array.isArray(msg)) return msg.join('; ');
+    if (typeof msg === 'string') return msg;
+    return `HTTP ${statusCode}`;
   }
 
   /**

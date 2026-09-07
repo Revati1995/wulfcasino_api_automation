@@ -8,7 +8,7 @@
     "test:admin": "playwright test tests/admin --project=admin-api",
     "test:player": "playwright test tests/player --project=player-api",
     "test:agent": "playwright test tests/agent --project=agent-api",
-    "test:smoke": "playwright test --grep @smoke --workers=2",
+    "test:smoke": "playwright test --grep @smoke",
     "test:smoke:admin": "playwright test tests/admin --grep @smoke --project=admin-api",
     "test:smoke:player": "playwright test tests/player --grep @smoke --project=player-api",
     "test:smoke:agent": "playwright test tests/agent --grep @smoke --project=agent-api",

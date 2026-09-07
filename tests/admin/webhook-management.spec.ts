@@ -1,13 +1,23 @@
 /**
  * Admin API - Webhook Management Tests
+ *
+ * The backend has no admin webhook CRUD: webhooks are inbound provider callbacks
+ * (postman/WulfCasino-Webhooks-Internal). Every test here is skipped with that reason.
  */
 
 import { test, expect } from '../../fixtures/api-fixtures';
-import { TestData, TestHelpers, DataGenerator } from '../../fixtures';
+import { TestHelpers, DataGenerator } from '../../fixtures';
+
+const NO_WEBHOOK_CRUD =
+  'Backend has no admin webhook CRUD: webhooks are inbound provider callbacks (postman/WulfCasino-Webhooks-Internal)';
 
 test.describe('Admin API - Webhook Management', () => {
   test.describe('Webhook CRUD Operations', () => {
     test('should get all webhooks @smoke', async ({ authenticatedAdminApi }) => {
+      test.skip(
+        true,
+        'Backend has no admin webhook CRUD: webhooks are inbound provider callbacks (postman/WulfCasino-Webhooks-Internal)'
+      );
       const response = await authenticatedAdminApi.getAllWebhooks();
 
       TestHelpers.assertSuccess(response, 'Get all webhooks should succeed');
@@ -16,6 +26,7 @@ test.describe('Admin API - Webhook Management', () => {
     });
 
     test('should create a new webhook @regression', async ({ authenticatedAdminApi }) => {
+      test.skip(true, NO_WEBHOOK_CRUD);
       const webhookData = DataGenerator.generateWebhook({
         url: `https://webhook.test.com/${Date.now()}`,
       });
@@ -30,6 +41,7 @@ test.describe('Admin API - Webhook Management', () => {
     });
 
     test('should get webhook by ID', async ({ authenticatedAdminApi }) => {
+      test.skip(true, NO_WEBHOOK_CRUD);
       // Create a webhook first
       const webhookData = DataGenerator.generateWebhook({
         url: `https://webhook.test.com/${Date.now()}`,
@@ -48,6 +60,7 @@ test.describe('Admin API - Webhook Management', () => {
     });
 
     test('should update webhook configuration', async ({ authenticatedAdminApi }) => {
+      test.skip(true, NO_WEBHOOK_CRUD);
       // Create a webhook first
       const webhookData = DataGenerator.generateWebhook({
         url: `https://webhook.test.com/${Date.now()}`,
@@ -70,6 +83,7 @@ test.describe('Admin API - Webhook Management', () => {
     });
 
     test('should delete webhook', async ({ authenticatedAdminApi }) => {
+      test.skip(true, NO_WEBHOOK_CRUD);
       // Create a webhook first
       const webhookData = DataGenerator.generateWebhook({
         url: `https://webhook.test.com/${Date.now()}`,
@@ -85,6 +99,7 @@ test.describe('Admin API - Webhook Management', () => {
     });
 
     test('should fail to get non-existent webhook', async ({ authenticatedAdminApi }) => {
+      test.skip(true, NO_WEBHOOK_CRUD);
       const response = await authenticatedAdminApi.getWebhookById('non-existent-id');
 
       TestHelpers.assertFailure(response);
@@ -94,6 +109,7 @@ test.describe('Admin API - Webhook Management', () => {
 
   test.describe('Webhook Testing', () => {
     test('should test webhook delivery', async ({ authenticatedAdminApi }) => {
+      test.skip(true, NO_WEBHOOK_CRUD);
       // Create a webhook first
       const webhookData = DataGenerator.generateWebhook({
         url: `https://webhook.test.com/${Date.now()}`,
@@ -112,6 +128,7 @@ test.describe('Admin API - Webhook Management', () => {
 
   test.describe('Webhook Validation', () => {
     test('should validate webhook URL format', async ({ authenticatedAdminApi }) => {
+      test.skip(true, NO_WEBHOOK_CRUD);
       const webhookData = DataGenerator.generateWebhook({
         url: 'invalid-url', // Invalid URL format
       });
@@ -122,6 +139,7 @@ test.describe('Admin API - Webhook Management', () => {
     });
 
     test('should validate required fields', async ({ authenticatedAdminApi }) => {
+      test.skip(true, NO_WEBHOOK_CRUD);
       const invalidWebhookData = {
         description: 'Test webhook',
         // Missing required fields (url, events)
@@ -133,6 +151,7 @@ test.describe('Admin API - Webhook Management', () => {
     });
 
     test('should validate events array', async ({ authenticatedAdminApi }) => {
+      test.skip(true, NO_WEBHOOK_CRUD);
       const webhookData = DataGenerator.generateWebhook({
         url: `https://webhook.test.com/${Date.now()}`,
         events: [], // Empty events array
@@ -144,6 +163,7 @@ test.describe('Admin API - Webhook Management', () => {
     });
 
     test('should reject duplicate webhook URLs', async ({ authenticatedAdminApi }) => {
+      test.skip(true, NO_WEBHOOK_CRUD);
       const url = `https://webhook.test.com/${Date.now()}`;
       const webhookData = DataGenerator.generateWebhook({ url });
 
@@ -161,6 +181,7 @@ test.describe('Admin API - Webhook Management', () => {
 
   test.describe('Webhook Events', () => {
     test('should support multiple event subscriptions', async ({ authenticatedAdminApi }) => {
+      test.skip(true, NO_WEBHOOK_CRUD);
       const webhookData = DataGenerator.generateWebhook({
         url: `https://webhook.test.com/${Date.now()}`,
         events: [
@@ -180,6 +201,7 @@ test.describe('Admin API - Webhook Management', () => {
     });
 
     test('should update webhook events', async ({ authenticatedAdminApi }) => {
+      test.skip(true, NO_WEBHOOK_CRUD);
       // Create webhook
       const webhookData = DataGenerator.generateWebhook({
         url: `https://webhook.test.com/${Date.now()}`,

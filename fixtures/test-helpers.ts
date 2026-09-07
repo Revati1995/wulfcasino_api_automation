@@ -92,12 +92,38 @@ export class TestHelpers {
    */
   static assertPaginationStructure(data: any, message?: string) {
     const errorMessage = message || 'Invalid pagination structure';
-    expect(data, errorMessage).toHaveProperty('data');
-    expect(data, errorMessage).toHaveProperty('pagination');
-    expect(data.pagination).toHaveProperty('page');
-    expect(data.pagination).toHaveProperty('limit');
-    expect(data.pagination).toHaveProperty('total');
-    expect(data.pagination).toHaveProperty('totalPages');
+    expect(data, errorMessage).toBeDefined();
+
+    // The backend uses several paginated envelopes:
+    //   { data: [], meta: { page, limit, total, totalPages } }   (users)
+    //   { data: [], page, limit, total, totalPages? }            (games, transactions)
+    //   { items: [], total, summary? }                           (reports)
+    //   { rows: [], pagination: { total, page, limit, ... } }     (bet history)
+    //   { data: [], pagination: { page, limit, total, totalPages } }
+    const rows = data?.data ?? data?.items ?? data?.rows;
+    expect(Array.isArray(rows), `${errorMessage}: expected a "data" or "items" array`).toBeTruthy();
+
+    const pageInfo = data?.pagination ?? data?.meta ?? data;
+    expect(pageInfo, `${errorMessage}: missing "total"`).toHaveProperty('total');
+    expect(typeof pageInfo.total, `${errorMessage}: "total" should be a number`).toBe('number');
+  }
+
+  /**
+   * Rows of a paginated response, whatever envelope the backend used
+   */
+  static paginatedRows(data: any): any[] {
+    const rows = data?.data ?? data?.items ?? data?.rows;
+    return Array.isArray(rows) ? rows : [];
+  }
+
+  /**
+   * Payload of responses wrapped as { status, message, data } (player profile etc.)
+   */
+  static unwrap<T = any>(data: any): T {
+    if (data && typeof data === 'object' && 'data' in data && ('status' in data || 'message' in data)) {
+      return data.data as T;
+    }
+    return data as T;
   }
 
   /**

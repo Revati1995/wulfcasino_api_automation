@@ -30,7 +30,8 @@
     "fixtures/**/*",
     "config/**/*",
     "types/**/*",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "global-setup.ts"
   ],
   "exclude": ["node_modules", "dist", "test-results", "playwright-report"]
 }

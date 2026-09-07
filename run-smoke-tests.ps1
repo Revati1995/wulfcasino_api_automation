@@ -1,5 +1,5 @@
-# Run smoke tests sequentially by API to avoid rate limiting
-# This script runs each API's smoke tests separately with delays between them
+# Runs each API's smoke tests separately. Login tokens are cached by global-setup.ts,
+# so the pauses below are only a safety margin for the 5/min login rate limit.
 
 Write-Host "Running Admin API Smoke Tests..." -ForegroundColor Cyan
 npm run test:smoke:admin

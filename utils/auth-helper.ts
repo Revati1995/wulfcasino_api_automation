@@ -1,81 +1,205 @@
 /**
  * Authentication Helper
  * Handles login, token management, and authentication flows
+ *
+ * Backend facts this helper encodes (see postman/*.postman_collection.json):
+ * - Staff (admin/agent) log in at POST /api/v1/admin/auth/login with { email, password }.
+ *   There is NO server-side logout for staff; logout is client-side token disposal.
+ * - Players log in at POST /api/v1/auth/login with { entity, password } where entity
+ *   is email/phone/username. The per-plan device limit may answer with
+ *   requiresDeviceConfirmation + deviceGrantToken instead of tokens; the login is
+ *   then completed at POST /api/v1/auth/login/confirm-device after choosing
+ *   sessions to revoke.
+ * - Login endpoints are throttled at 5 requests/min per IP.
  */
 
 import { ApiClient } from './api-client';
 import { AuthTokens, LoginCredentials, ApiResponse } from '../types';
 import { logger } from './logger';
 
+export interface AuthHelperOptions {
+  /** Path prefix for auth routes: '/api/v1' (player) or '/api/v1/admin' (staff). */
+  basePath?: string;
+  /** Whether the backend exposes POST {basePath}/auth/logout. Staff auth has none. */
+  serverLogout?: boolean;
+  /** Login identity field: 'email' (staff) or 'entity' (player). */
+  loginField?: string;
+  /** Session id that must not be revoked during the device-limit flow. */
+  protectedSessionId?: string;
+}
+
+interface ActiveDevice {
+  sessionId?: string;
+  isCurrent?: boolean;
+  lastSeenAt?: string;
+  createdAt?: string;
+  deviceLabel?: string;
+}
+
 export class AuthHelper {
   private apiClient: ApiClient;
   private currentTokens?: AuthTokens;
   private basePath: string;
+  private serverLogout: boolean;
+  private loginField: string;
+  private protectedSessionId?: string;
 
-  constructor(apiClient: ApiClient, basePath: string = '/api/v1') {
+  constructor(apiClient: ApiClient, basePathOrOptions: string | AuthHelperOptions = '/api/v1') {
+    const options: AuthHelperOptions =
+      typeof basePathOrOptions === 'string' ? { basePath: basePathOrOptions } : basePathOrOptions;
     this.apiClient = apiClient;
-    this.basePath = basePath;
+    this.basePath = options.basePath ?? '/api/v1';
+    this.serverLogout = options.serverLogout ?? true;
+    this.loginField = options.loginField ?? 'email';
+    this.protectedSessionId = options.protectedSessionId;
+  }
+
+  /**
+   * Session id that the device-limit flow must keep alive (the shared cached session).
+   */
+  setProtectedSessionId(sessionId?: string): void {
+    this.protectedSessionId = sessionId;
+  }
+
+  private path(route: string): string {
+    return `${this.basePath}${route}`;
+  }
+
+  /**
+   * Find tokens in the various shapes the backend uses.
+   */
+  private extractTokens(data: any): AuthTokens | undefined {
+    if (!data || typeof data !== 'object') return undefined;
+    const candidates = [data, data.data, data.tokens];
+    for (const c of candidates) {
+      if (!c || typeof c !== 'object') continue;
+      const accessToken = c.accessToken || c.token || c.access_token;
+      if (typeof accessToken === 'string' && accessToken) {
+        return {
+          accessToken,
+          refreshToken: c.refreshToken || c.refresh_token,
+          expiresIn: c.expiresIn,
+          tokenType: c.tokenType,
+        };
+      }
+    }
+    return undefined;
+  }
+
+  private acceptTokens(tokens: AuthTokens, response: ApiResponse<any>, identity: string): ApiResponse<AuthTokens> {
+    this.currentTokens = tokens;
+    this.apiClient.setAuthToken(tokens.accessToken);
+    logger.info(`Login successful for: ${identity}`);
+    return {
+      success: true,
+      data: tokens,
+      statusCode: response.statusCode,
+      message: response.message,
+    };
   }
 
   /**
    * Login with credentials
+   * @param emailFieldName overrides the identity field name ('email' | 'entity')
    */
-  async login(credentials: LoginCredentials, emailFieldName: string = 'email'): Promise<ApiResponse<AuthTokens>> {
+  async login(credentials: LoginCredentials, emailFieldName?: string): Promise<ApiResponse<AuthTokens>> {
+    const field = emailFieldName || this.loginField;
     logger.info(`Attempting login for: ${credentials.email}`);
 
-    const loginData = emailFieldName === 'email' 
-      ? { email: credentials.email, password: credentials.password }
-      : { [emailFieldName]: credentials.email, password: credentials.password };
+    const loginData = { [field]: credentials.email, password: credentials.password };
+
+    const response = await this.apiClient.post<any>(this.path('/auth/login'), loginData, {
+      requiresAuth: false,
+    });
+
+    if (response.success && response.data) {
+      const tokens = this.extractTokens(response.data);
+      if (tokens) {
+        return this.acceptTokens(tokens, response, credentials.email);
+      }
+
+      if (response.data.requiresDeviceConfirmation && response.data.deviceGrantToken) {
+        return this.confirmDevice(response.data, credentials.email);
+      }
+
+      if (response.data.requiresStepUp) {
+        const error = `Login for ${credentials.email} requires a SEON step-up OTP; automation cannot complete it`;
+        logger.error(error);
+        return { success: false, statusCode: response.statusCode, error, data: response.data };
+      }
+
+      const error = `Login response contained no access token: ${JSON.stringify(response.data).slice(0, 300)}`;
+      logger.error(error);
+      return { success: false, statusCode: response.statusCode, error, data: response.data };
+    }
+
+    logger.error(`Login failed for: ${credentials.email}`, response.error);
+    return response;
+  }
+
+  /**
+   * Second half of the device-limit flow: revoke the oldest session(s) that are
+   * not the protected (shared) session, then exchange the grant for tokens.
+   */
+  private async confirmDevice(loginData: any, identity: string): Promise<ApiResponse<AuthTokens>> {
+    const devices: ActiveDevice[] = Array.isArray(loginData.activeDevices) ? loginData.activeDevices : [];
+    const limit = Number(loginData.deviceLimit) || 1;
+    const needed = Math.max(1, devices.length - limit + 1);
+
+    const byAge = (a: ActiveDevice, b: ActiveDevice) =>
+      new Date(a.lastSeenAt || a.createdAt || 0).getTime() - new Date(b.lastSeenAt || b.createdAt || 0).getTime();
+
+    const withId = devices.filter((d) => !!d.sessionId);
+    const preferred = withId
+      .filter((d) => !d.isCurrent && d.sessionId !== this.protectedSessionId)
+      .sort(byAge);
+
+    let revokeSessionIds = preferred.slice(0, needed).map((d) => d.sessionId as string);
+    if (revokeSessionIds.length < needed) {
+      // Not enough unprotected sessions: fall back to the oldest sessions overall.
+      revokeSessionIds = withId
+        .sort(byAge)
+        .slice(0, needed)
+        .map((d) => d.sessionId as string);
+    }
+
+    logger.warn(
+      `Device limit (${limit}) reached for ${identity}: ${devices.length} active device(s). Revoking ${revokeSessionIds.length}: ${revokeSessionIds.join(', ')}`
+    );
 
     const response = await this.apiClient.post<any>(
-      `${this.basePath}/auth/login`,
-      loginData,
+      this.path('/auth/login/confirm-device'),
+      { deviceGrantToken: loginData.deviceGrantToken, revokeSessionIds },
       { requiresAuth: false }
     );
 
     if (response.success && response.data) {
-      // Handle both token formats: { token: "..." } or { accessToken: "..." }
-      const accessToken = response.data.token || response.data.accessToken;
-      const refreshToken = response.data.refreshToken;
-      
-      if (accessToken) {
-        this.currentTokens = {
-          accessToken,
-          refreshToken,
-        };
-        this.apiClient.setAuthToken(accessToken);
-        logger.info(`Login successful for: ${credentials.email}`);
-        
-        // Return normalized format
-        return {
-          success: true,
-          data: this.currentTokens,
-          statusCode: response.statusCode,
-          message: response.message,
-        };
+      const tokens = this.extractTokens(response.data);
+      if (tokens) {
+        return this.acceptTokens(tokens, response, identity);
       }
     }
-    
-    logger.error(`Login failed for: ${credentials.email}`, response.error);
-    return response;
+
+    const error = response.error || 'Device confirmation did not return an access token';
+    logger.error(`Device confirmation failed for: ${identity}`, error);
+    return { success: false, statusCode: response.statusCode, error, data: response.data };
   }
 
   /**
    * Register a new user
    */
   async register(userData: any): Promise<ApiResponse<any>> {
-    logger.info(`Attempting registration for: ${userData.email}`);
+    const identity = userData.entity || userData.email;
+    logger.info(`Attempting registration for: ${identity}`);
 
-    const response = await this.apiClient.post<any>(
-      '/auth/register',
-      userData,
-      { requiresAuth: false }
-    );
+    const response = await this.apiClient.post<any>(this.path('/auth/register'), userData, {
+      requiresAuth: false,
+    });
 
     if (response.success) {
-      logger.info(`Registration successful for: ${userData.email}`);
+      logger.info(`Registration successful for: ${identity}`);
     } else {
-      logger.error(`Registration failed for: ${userData.email}`, response.error);
+      logger.error(`Registration failed for: ${identity}`, response.error);
     }
 
     return response;
@@ -96,30 +220,45 @@ export class AuthHelper {
 
     logger.info('Attempting to refresh token');
 
-    const response = await this.apiClient.post<AuthTokens>(
-      '/auth/refresh',
+    const response = await this.apiClient.post<any>(
+      this.path('/auth/refresh'),
       { refreshToken: token },
       { requiresAuth: false }
     );
 
     if (response.success && response.data) {
-      this.currentTokens = response.data;
-      this.apiClient.setAuthToken(response.data.accessToken);
-      logger.info('Token refresh successful');
-    } else {
-      logger.error('Token refresh failed', response.error);
+      const tokens = this.extractTokens(response.data);
+      if (tokens) {
+        this.currentTokens = { ...tokens, refreshToken: tokens.refreshToken || token };
+        this.apiClient.setAuthToken(tokens.accessToken);
+        logger.info('Token refresh successful');
+        return { ...response, data: this.currentTokens };
+      }
     }
 
+    logger.error('Token refresh failed', response.error);
     return response;
   }
 
   /**
-   * Logout
+   * Logout.
+   * Player: POST /auth/logout revokes the session server-side.
+   * Staff: no server endpoint exists; tokens are discarded client-side.
    */
   async logout(): Promise<ApiResponse<void>> {
     logger.info('Attempting logout');
 
-    const response = await this.apiClient.post<void>('/auth/logout');
+    if (!this.serverLogout) {
+      this.clearTokens();
+      logger.info('Logout: no server-side endpoint for this role, tokens cleared client-side');
+      return {
+        success: true,
+        statusCode: 200,
+        message: 'No server-side logout endpoint for this role; tokens cleared client-side',
+      };
+    }
+
+    const response = await this.apiClient.post<void>(this.path('/auth/logout'));
 
     if (response.success) {
       this.clearTokens();
@@ -132,7 +271,7 @@ export class AuthHelper {
   }
 
   /**
-   * Verify token validity
+   * Verify token validity against the "me" endpoint
    */
   async verifyToken(token?: string): Promise<ApiResponse<any>> {
     const authToken = token || this.currentTokens?.accessToken;
@@ -146,11 +285,18 @@ export class AuthHelper {
 
     logger.info('Verifying token');
 
-    const response = await this.apiClient.get<any>('/auth/verify', {
+    return this.apiClient.get<any>(this.path('/auth/me'), {
       headers: { Authorization: `Bearer ${authToken}` },
+      requiresAuth: false,
     });
+  }
 
-    return response;
+  /**
+   * True when the given token is accepted by the "me" endpoint
+   */
+  async isTokenValid(token: string): Promise<boolean> {
+    const response = await this.verifyToken(token);
+    return response.success;
   }
 
   /**
@@ -158,7 +304,7 @@ export class AuthHelper {
    */
   async getCurrentUser(): Promise<ApiResponse<any>> {
     logger.info('Fetching current user profile');
-    return await this.apiClient.get<any>('/auth/me');
+    return await this.apiClient.get<any>(this.path('/auth/me'));
   }
 
   /**
@@ -167,7 +313,7 @@ export class AuthHelper {
   async changePassword(oldPassword: string, newPassword: string): Promise<ApiResponse<void>> {
     logger.info('Attempting password change');
 
-    const response = await this.apiClient.post<void>('/auth/change-password', {
+    const response = await this.apiClient.post<void>(this.path('/auth/change-password'), {
       oldPassword,
       newPassword,
     });
@@ -188,7 +334,7 @@ export class AuthHelper {
     logger.info(`Requesting password reset for: ${email}`);
 
     const response = await this.apiClient.post<void>(
-      '/auth/forgot-password',
+      this.path('/auth/forgot-password'),
       { email },
       { requiresAuth: false }
     );
@@ -209,7 +355,7 @@ export class AuthHelper {
     logger.info('Attempting password reset with token');
 
     const response = await this.apiClient.post<void>(
-      '/auth/reset-password',
+      this.path('/auth/reset-password'),
       { token, newPassword },
       { requiresAuth: false }
     );

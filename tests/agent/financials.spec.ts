@@ -1,5 +1,8 @@
 /**
  * Agent API - Financial Management Tests
+ *
+ *   GET /admin/referral/agent-stats   earnings + wallet balances
+ *   GET /admin/transactions/me        the agent's own ledger { data, total, page, limit }
  */
 
 import { test, expect } from '../../fixtures/api-fixtures';
@@ -12,10 +15,13 @@ test.describe('Agent API - Financial Management', () => {
 
       TestHelpers.assertSuccess(response, 'Get financial summary should succeed');
       TestHelpers.assertHasData(response);
+      // GET /admin/referral/agent-stats: earnings + wallet balances for the agent
       TestHelpers.assertHasProperties(response.data, [
-        'totalRevenue',
-        'totalCommission',
-        'totalPlayers',
+        'totalEarnings',
+        'totalEarnedAllTime',
+        'availableBalance',
+        'frozenBalance',
+        'totalReferrals',
       ]);
     });
 
@@ -24,8 +30,11 @@ test.describe('Agent API - Financial Management', () => {
 
       TestHelpers.assertSuccess(response);
       TestHelpers.assertHasData(response);
-      expect(response.data).toHaveProperty('balance');
-      expect(typeof response.data?.balance).toBe('number');
+      // Wallet state: available / frozen / pending / locked balances
+      for (const field of ['availableBalance', 'frozenBalance', 'pendingIncome', 'lockedIncome']) {
+        expect(typeof response.data?.[field], `${field} should be a number`).toBe('number');
+        expect(response.data?.[field]).toBeGreaterThanOrEqual(0);
+      }
     });
   });
 
@@ -38,9 +47,15 @@ test.describe('Agent API - Financial Management', () => {
 
       TestHelpers.assertSuccess(response, 'Get transactions should succeed');
       TestHelpers.assertHasData(response);
+      // GET /admin/transactions/me: { data, total, page, limit }
+      TestHelpers.assertPaginationStructure(response.data);
     });
 
     test('should get transaction by ID', async ({ authenticatedAgentApi }) => {
+      test.skip(
+        true,
+        'Backend has no single-transaction lookup for agents (GET /admin/transactions/me/:id does not exist; checked postman/WulfCasino-Agent-API)'
+      );
       // Get transactions first
       const listResponse = await authenticatedAgentApi.getTransactions({ page: 1, limit: 1 });
 
@@ -56,29 +71,42 @@ test.describe('Agent API - Financial Management', () => {
     });
 
     test('should filter transactions by type', async ({ authenticatedAgentApi }) => {
+      // type enum: CREDIT | DEBIT (unknown values answer 500)
       const response = await authenticatedAgentApi.getTransactions({
         page: 1,
         limit: 10,
-        type: 'commission',
+        type: 'CREDIT',
       });
 
       TestHelpers.assertSuccess(response);
-      TestHelpers.assertHasData(response);
+      TestHelpers.assertPaginationStructure(response.data);
+      for (const transaction of TestHelpers.paginatedRows(response.data)) {
+        expect(transaction.type).toBe('CREDIT');
+      }
     });
 
     test('should filter transactions by date range', async ({ authenticatedAgentApi }) => {
+      // GET /admin/transactions/me filters with fromDate / toDate
       const response = await authenticatedAgentApi.getTransactions({
         page: 1,
         limit: 10,
-        startDate: TestData.dateRanges.lastWeek.startDate,
-        endDate: TestData.dateRanges.lastWeek.endDate,
+        fromDate: TestData.dateRanges.lastWeek.startDate,
+        toDate: TestData.dateRanges.lastWeek.endDate,
       });
 
       TestHelpers.assertSuccess(response);
-      TestHelpers.assertHasData(response);
+      TestHelpers.assertPaginationStructure(response.data);
+      const from = new Date(TestData.dateRanges.lastWeek.startDate).getTime();
+      for (const transaction of TestHelpers.paginatedRows(response.data)) {
+        expect(new Date(transaction.createdAt).getTime()).toBeGreaterThanOrEqual(from);
+      }
     });
 
     test('should filter transactions by status', async ({ authenticatedAgentApi }) => {
+      test.skip(
+        true,
+        'GET /admin/transactions/me has no status filter (only type, source, fromDate, toDate; checked postman/WulfCasino-Agent-API)'
+      );
       const response = await authenticatedAgentApi.getTransactions({
         page: 1,
         limit: 10,
@@ -90,6 +118,10 @@ test.describe('Agent API - Financial Management', () => {
     });
 
     test('should sort transactions', async ({ authenticatedAgentApi }) => {
+      test.skip(
+        true,
+        'GET /admin/transactions/me has no sort params (only type, source, fromDate, toDate, page, limit; checked postman/WulfCasino-Agent-API)'
+      );
       const response = await authenticatedAgentApi.getTransactions({
         page: 1,
         limit: 10,
@@ -107,9 +139,22 @@ test.describe('Agent API - Financial Management', () => {
 
       TestHelpers.assertSuccess(page1);
       TestHelpers.assertSuccess(page2);
+      TestHelpers.assertPaginationStructure(page1.data);
+      TestHelpers.assertPaginationStructure(page2.data);
+      // The envelope echoes the requested page/limit and a stable total
+      expect(page1.data.page).toBe(1);
+      expect(page2.data.page).toBe(2);
+      expect(page1.data.limit).toBe(5);
+      expect(page2.data.limit).toBe(5);
+      expect(page1.data.total).toBe(page2.data.total);
+      expect(TestHelpers.paginatedRows(page1.data).length).toBeLessThanOrEqual(5);
     });
 
     test('should fail to get non-existent transaction', async ({ authenticatedAgentApi }) => {
+      test.skip(
+        true,
+        'Backend has no single-transaction lookup for agents (GET /admin/transactions/me/:id does not exist, so 404 would only prove the route is missing; checked postman/WulfCasino-Agent-API)'
+      );
       const response = await authenticatedAgentApi.getTransactionById('non-existent-id');
 
       TestHelpers.assertFailure(response);
@@ -122,20 +167,24 @@ test.describe('Agent API - Financial Management', () => {
       const response = await authenticatedAgentApi.getFinancialSummary();
 
       TestHelpers.assertSuccess(response);
-      if (response.data) {
-        expect(typeof response.data.totalRevenue).toBe('number');
-        expect(response.data.totalRevenue).toBeGreaterThanOrEqual(0);
-      }
+      TestHelpers.assertHasData(response);
+      // Team revenue = the agent's own earnings plus the sub-agents' earnings
+      expect(typeof response.data.totalTeamEarnings).toBe('number');
+      expect(response.data.totalTeamEarnings).toBeGreaterThanOrEqual(0);
+      expect(typeof response.data.subAgentsEarnedAllTime).toBe('number');
+      expect(response.data.subAgentsEarnedAllTime).toBeGreaterThanOrEqual(0);
     });
 
     test('should calculate total commission', async ({ authenticatedAgentApi }) => {
       const response = await authenticatedAgentApi.getFinancialSummary();
 
       TestHelpers.assertSuccess(response);
-      if (response.data) {
-        expect(typeof response.data.totalCommission).toBe('number');
-        expect(response.data.totalCommission).toBeGreaterThanOrEqual(0);
-      }
+      TestHelpers.assertHasData(response);
+      expect(typeof response.data.totalEarnings).toBe('number');
+      expect(response.data.totalEarnings).toBeGreaterThanOrEqual(0);
+      expect(typeof response.data.totalEarnedAllTime).toBe('number');
+      expect(response.data.totalEarnedAllTime).toBeGreaterThanOrEqual(0);
+      expect(typeof response.data.totalClaimed).toBe('number');
     });
   });
 

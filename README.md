@@ -398,3 +398,23 @@ npm run lint:fix
 - WulfCasino team
 - Playwright community
 - Open source contributors
+
+## Authentication, rate limiting and sessions
+
+- The backend throttles `POST /api/v1/auth/login` and `POST /api/v1/admin/auth/login` at **5 requests per minute per IP**.
+- `global-setup.ts` logs in once per role (admin, agent, player) and caches the tokens in `.auth/tokens.json` (git-ignored). The `authenticated*Api` fixtures reuse those tokens; they re-login only if the cached token is rejected by the `me` endpoint.
+- Cached tokens are validated and reused across runs, so repeated local runs cost zero logins. Delete `.auth/tokens.json` to force fresh logins.
+- Players have a per-plan **device limit (2 on staging)**. `AuthHelper.login` completes the `requiresDeviceConfirmation` flow automatically via `POST /auth/login/confirm-device`, revoking the oldest session that is not the shared cached one.
+- `POST /auth/logout` revokes **all** sessions of the player. Tests that need to log out must log in with their own session first (see `tests/player/auth.spec.ts`). Staff (admin/agent) have no server-side logout; `logout()` clears the token client-side.
+- Endpoint paths in `utils/*-api-client.ts` follow the Postman collections in `postman/`. Methods for features the backend does not expose are marked `NOT IMPLEMENTED ON BACKEND`; the corresponding smoke tests are skipped with a reason.
+
+## Test scope against the real backend
+
+The specs were written against an assumed API and have been mapped, file by file, onto the real endpoints documented in `postman/`. Tests whose feature does not exist on the backend, or that would mutate shared staging data (system config, providers, existing users, balances, payouts, commission claims), are skipped with an explicit reason (`test.skip(true, '...')`) instead of being deleted. Writes are only performed on entities a test creates itself (admin users, admin bonuses, agent promo codes) and are cleaned up in the same spec.
+
+| Run | Command | Result (2026-09-07, staging) |
+|---|---|---|
+| Smoke | `npm run test:smoke` | 32 passed, 3 skipped |
+| Full | `npm test` | 179 passed, 160 skipped, 0 failed, ~6 min |
+
+`scripts/staging-cleanup.js` reverts side effects left by the legacy specs (dry run by default, `--apply` to execute).
