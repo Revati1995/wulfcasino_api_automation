@@ -422,3 +422,19 @@ The specs were written against an assumed API and have been mapped, file by file
 ### Seeing the request and response in the report
 
 `npx playwright show-report` opens the HTML report. Every API call a test makes is attached to that test as `METHOD /path → status`, containing the request (headers with the bearer token redacted, body) and the full response body. Assertions also record an `expected … -> actual …` annotation on the test. Both appear on passing tests, not only on failures, so the report doubles as evidence of what the API actually returned.
+
+## Setting up on a new machine
+
+`.env` is git-ignored because it holds passwords, so a fresh clone does not have one. Without it the clients fall back to `http://localhost:3000`, every request is refused, and the run reports a confusing mix of failures and a handful of tests that "pass" only because they assert an error status. The suite now stops immediately with an explanatory message instead.
+
+```bash
+npm install
+npx playwright install
+cp .env.example .env      # PowerShell: Copy-Item .env.example .env
+# fill in the six credential values, then:
+npm run test:smoke
+```
+
+The URLs in `.env.example` already point at the shared staging host; only the credentials need filling in.
+
+**Two people should not run the suite at the same time.** The accounts are shared: login is throttled at 5 requests/minute per IP, the player plan allows only 2 concurrent devices, and `POST /auth/logout` revokes every session of that player. Concurrent runs evict each other's sessions and produce sporadic 401s and 429s.

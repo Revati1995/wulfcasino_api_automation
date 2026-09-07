@@ -186,10 +186,13 @@ export class ApiClient {
       }
     }
 
+    // statusCode 0 means "no HTTP response at all" (DNS, refused connection,
+    // timeout). It must not look like a 5xx, otherwise tests that assert an
+    // error status would pass against an unreachable API.
     return {
       success: false,
       error: lastError?.message || 'Request failed after retries',
-      statusCode: lastError?.statusCode || 500,
+      statusCode: lastError?.statusCode || 0,
     };
   }
 
