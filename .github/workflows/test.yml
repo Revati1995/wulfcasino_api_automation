@@ -71,7 +71,10 @@ jobs:
 
       - name: Check required secrets are set
         env:
+          BASE_URL: ${{ secrets.BASE_URL }}
           ADMIN_API_URL: ${{ secrets.ADMIN_API_URL }}
+          PLAYER_API_URL: ${{ secrets.PLAYER_API_URL }}
+          AGENT_API_URL: ${{ secrets.AGENT_API_URL }}
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
           PLAYER_EMAIL: ${{ secrets.PLAYER_EMAIL }}
@@ -80,7 +83,7 @@ jobs:
           AGENT_PASSWORD: ${{ secrets.AGENT_PASSWORD }}
         run: |
           missing=""
-          for name in ADMIN_API_URL ADMIN_EMAIL ADMIN_PASSWORD PLAYER_EMAIL PLAYER_PASSWORD AGENT_EMAIL AGENT_PASSWORD; do
+          for name in BASE_URL ADMIN_API_URL PLAYER_API_URL AGENT_API_URL ADMIN_EMAIL ADMIN_PASSWORD PLAYER_EMAIL PLAYER_PASSWORD AGENT_EMAIL AGENT_PASSWORD; do
             if [ -z "${!name}" ]; then missing="$missing $name"; fi
           done
           if [ -n "$missing" ]; then

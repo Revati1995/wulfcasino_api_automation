@@ -83,16 +83,36 @@ function assertConfigured(): void {
     );
   }
 
-  const config = env.get();
-  const urls = [config.adminApiUrl, config.playerApiUrl, config.agentApiUrl];
-  const missing = ['ADMIN_EMAIL', 'ADMIN_PASSWORD', 'PLAYER_EMAIL', 'PLAYER_PASSWORD', 'AGENT_EMAIL', 'AGENT_PASSWORD'].filter(
-    (key) => !process.env[key]
-  );
+  // The URLs are required too. Without them the config silently falls back to
+  // http://localhost:3000, which produces a confusing partial failure: the role
+  // whose URL is set passes, the others fail with connection errors.
+  const required = [
+    'BASE_URL',
+    'ADMIN_API_URL',
+    'PLAYER_API_URL',
+    'AGENT_API_URL',
+    'ADMIN_EMAIL',
+    'ADMIN_PASSWORD',
+    'PLAYER_EMAIL',
+    'PLAYER_PASSWORD',
+    'AGENT_EMAIL',
+    'AGENT_PASSWORD',
+  ];
+  const missing = required.filter((key) => !process.env[key]?.trim());
 
   if (missing.length) {
-    throw new Error(`.env is missing required entries: ${missing.join(', ')}`);
+    throw new Error(
+      [
+        `Missing or empty in .env: ${missing.join(', ')}`,
+        '',
+        'On CI these come from repository secrets of the same name',
+        '(Settings -> Secrets and variables -> Actions).',
+      ].join('\n')
+    );
   }
 
+  const config = env.get();
+  const urls = [config.adminApiUrl, config.playerApiUrl, config.agentApiUrl];
   if (urls.some((url) => url.includes('localhost'))) {
     logger.warn(
       '[global-setup] API URLs point at localhost. If you meant to test the hosted environment, set ADMIN_API_URL / PLAYER_API_URL / AGENT_API_URL in .env.'
